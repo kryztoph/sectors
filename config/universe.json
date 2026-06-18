@@ -1,0 +1,52 @@
+{
+  "benchmark": {
+    "name": "S&P 500 ETF",
+    "symbol": "SPY"
+  },
+  "sectors": [
+    {
+      "name": "Communication Services",
+      "symbol": "XLC"
+    },
+    {
+      "name": "Consumer Discretionary",
+      "symbol": "XLY"
+    },
+    {
+      "name": "Consumer Staples",
+      "symbol": "XLP"
+    },
+    {
+      "name": "Energy",
+      "symbol": "XLE"
+    },
+    {
+      "name": "Financials",
+      "symbol": "XLF"
+    },
+    {
+      "name": "Health Care",
+      "symbol": "XLV"
+    },
+    {
+      "name": "Industrials",
+      "symbol": "XLI"
+    },
+    {
+      "name": "Materials",
+      "symbol": "XLB"
+    },
+    {
+      "name": "Real Estate",
+      "symbol": "XLRE"
+    },
+    {
+      "name": "Technology",
+      "symbol": "XLK"
+    },
+    {
+      "name": "Utilities",
+      "symbol": "XLU"
+    }
+  ]
+}

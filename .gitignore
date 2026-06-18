@@ -1,0 +1,14 @@
+/.venv/
+/build/
+/dist/
+/*.egg-info/
+/state/raw/*
+/state/snapshots/*
+/reports/*
+/logs/*
+!state/raw/.gitkeep
+!state/snapshots/.gitkeep
+!reports/.gitkeep
+!logs/.gitkeep
+__pycache__/
+*.pyc
