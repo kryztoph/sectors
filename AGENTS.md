@@ -7,6 +7,8 @@ This project monitors the 11 S&P 500 sectors for sector rotation.
 The initial workflow tracks the SPDR sector ETF proxies, compares them against
 SPY, ranks relative strength, and writes local snapshots and Markdown briefs.
 It is a market-monitoring and research tool, not a trade execution system.
+The project also renders a four-quadrant HTML tracker from accumulated
+time-ordered snapshots.
 
 ## Sector Universe
 
@@ -35,6 +37,7 @@ Benchmark:
   existing snapshots.
 - Store generated market snapshots under `state/snapshots/`.
 - Store generated human reports under `reports/`.
+- Store generated HTML trackers under `reports/`.
 - Keep raw or derived data out of source control unless it is a small test
   fixture.
 

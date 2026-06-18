@@ -50,6 +50,9 @@ python3 -m sectors brief
     updates `state/snapshots/latest.json`.
 - `python3 -m sectors brief`
   - Writes a Markdown rotation brief from the latest snapshot.
+- `python3 -m sectors tracker`
+  - Writes a standalone HTML four-quadrant rotation tracker from all
+    time-ordered snapshots.
 - `python3 -m sectors status`
   - Prints latest snapshot and report paths.
 
@@ -78,6 +81,7 @@ The job runs Monday through Friday at 5:30 PM local time. Each run writes:
 - `state/snapshots/<timestamp>.json`
 - `state/snapshots/latest.json`
 - `reports/<timestamp>-brief.md`
+- `reports/sector_rotation_tracker.html`
 - `logs/daily.out`
 - `logs/daily.err`
 
@@ -117,3 +121,20 @@ Signals:
 - `LAGGING`: negative score, negative 21-day relative return, and weak trend
 
 This is a research monitor, not a trading system.
+
+## Four-Quadrant Tracker
+
+Generate the visual tracker from the rolling snapshot history:
+
+```sh
+python3 -m sectors tracker
+```
+
+Open `reports/sector_rotation_tracker.html` in a browser. The chart uses:
+
+- X-axis: relative strength score from the snapshot
+- Y-axis: score momentum versus the prior snapshot
+- Quadrants: `Leading`, `Weakening`, `Lagging`, and `Improving`
+
+The slider steps through snapshots in time order. `Play` animates the sequence,
+and each sector keeps a short trail so rotation paths are visible.

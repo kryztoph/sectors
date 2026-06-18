@@ -9,6 +9,7 @@ from .config import init_project, load_universe, read_json, validate_universe, w
 from .market_data import get_market_data_provider, provider_names
 from .model import utc_timestamp
 from .report import write_brief
+from .tracker import write_tracker
 
 
 ROOT = Path.cwd()
@@ -64,13 +65,22 @@ def cmd_brief(args: argparse.Namespace) -> int:
 def cmd_status(args: argparse.Namespace) -> int:
     snapshot = _latest_snapshot(ROOT)
     latest_report = sorted((ROOT / "reports").glob("*.md"))[-1:] if (ROOT / "reports").exists() else []
+    tracker = ROOT / "reports" / "sector_rotation_tracker.html"
     status = {
         "root": str(ROOT),
         "latest_snapshot": str(snapshot) if snapshot else None,
         "latest_report": str(latest_report[0]) if latest_report else None,
+        "tracker": str(tracker) if tracker.exists() else None,
         "providers": provider_names(),
     }
     print(json.dumps(status, indent=2, sort_keys=True))
+    return 0
+
+
+def cmd_tracker(args: argparse.Namespace) -> int:
+    output = Path(args.output) if args.output else None
+    written = write_tracker(ROOT, output=output, trail_length=args.trail_length)
+    print(written)
     return 0
 
 
@@ -103,6 +113,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     status_parser = subparsers.add_parser("status")
     status_parser.set_defaults(func=cmd_status)
+
+    tracker_parser = subparsers.add_parser("tracker")
+    tracker_parser.add_argument("--output", help="HTML output path; defaults to reports/sector_rotation_tracker.html")
+    tracker_parser.add_argument("--trail-length", type=int, default=12, help="Number of recent snapshots to draw as trails")
+    tracker_parser.set_defaults(func=cmd_tracker)
     return parser
 
 

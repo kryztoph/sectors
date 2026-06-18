@@ -15,5 +15,6 @@ echo "provider=$PROVIDER period=$PERIOD python=$PYTHON_BIN"
 "$PYTHON_BIN" -m sectors validate
 "$PYTHON_BIN" -m sectors snapshot --provider "$PROVIDER" --period "$PERIOD"
 "$PYTHON_BIN" -m sectors brief
+"$PYTHON_BIN" -m sectors tracker
 
 echo "[$(date -u '+%Y-%m-%dT%H:%M:%SZ')] sector rotation capture complete"
