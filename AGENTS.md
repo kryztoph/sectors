@@ -9,6 +9,8 @@ SPY, ranks relative strength, and writes local snapshots and Markdown briefs.
 It is a market-monitoring and research tool, not a trade execution system.
 The project also renders a four-quadrant HTML tracker from accumulated
 time-ordered snapshots.
+Historical weekly closes may be backfilled as normal snapshot files so the
+tracker has a useful path before the daily collector has accumulated history.
 
 ## Sector Universe
 

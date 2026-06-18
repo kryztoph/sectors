@@ -5,10 +5,11 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from sectors.analytics import build_snapshot
+from sectors.backfill import _latest_complete_weekly_closes, _truncate_history
 from sectors.config import DEFAULT_UNIVERSE, load_universe, write_json
 from sectors.market_data import SampleMarketDataProvider
 from sectors.report import build_brief
-from sectors.tracker import build_rotation_series, build_tracker_html
+from sectors.tracker import build_rotation_series, build_tracker_html, load_snapshots
 
 
 class SectorMonitorTests(unittest.TestCase):
@@ -82,6 +83,35 @@ class SectorMonitorTests(unittest.TestCase):
         self.assertEqual(series["sectorCount"], 11)
         self.assertIn("Sector Rotation Tracker", html)
         self.assertIn("Relative strength", html)
+        self.assertIn("Show All", html)
+        self.assertIn("row-toggle", html)
+        self.assertIn("name-cell", html)
+        self.assertIn("visibleSymbols", html)
+
+    def test_weekly_backfill_helpers_select_prior_complete_weeks(self) -> None:
+        provider = SampleMarketDataProvider()
+        symbols = ["SPY", "XLK", "XLF"]
+        history = provider.fetch_history(symbols)
+
+        closes = _latest_complete_weekly_closes(history, 8)
+        truncated = _truncate_history(history, closes[-1].isoformat())
+
+        self.assertEqual(len(closes), 8)
+        self.assertTrue(all(close.weekday() <= 4 for close in closes))
+        self.assertLessEqual(truncated["SPY"][-1].date, closes[-1].isoformat())
+
+    def test_tracker_loads_snapshots_by_as_of_date(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            snapshot_dir = root / "state" / "snapshots"
+            old = {"created_at": "backfill-weekly-2026-05-01", "as_of": "2026-05-01", "metrics": []}
+            new = {"created_at": "20260618T213000Z", "as_of": "2026-06-18", "metrics": []}
+            write_json(snapshot_dir / "20260618T213000Z.json", new)
+            write_json(snapshot_dir / "backfill-weekly-2026-05-01.json", old)
+
+            snapshots = load_snapshots(snapshot_dir)
+
+        self.assertEqual([item["as_of"] for item in snapshots], ["2026-05-01", "2026-06-18"])
 
 
 if __name__ == "__main__":

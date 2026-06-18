@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 
 from .analytics import build_snapshot
+from .backfill import backfill_weekly_snapshots
 from .config import init_project, load_universe, read_json, validate_universe, write_json
 from .market_data import get_market_data_provider, provider_names
 from .model import utc_timestamp
@@ -84,6 +85,22 @@ def cmd_tracker(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_backfill_weekly(args: argparse.Namespace) -> int:
+    written = backfill_weekly_snapshots(
+        ROOT,
+        weeks=args.weeks,
+        provider_name=args.provider,
+        period=args.period,
+        overwrite=args.overwrite,
+        refresh_tracker=not args.no_tracker,
+    )
+    for path in written:
+        print(path)
+    if not written:
+        print("no new weekly snapshots written")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="sectors")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -118,6 +135,14 @@ def build_parser() -> argparse.ArgumentParser:
     tracker_parser.add_argument("--output", help="HTML output path; defaults to reports/sector_rotation_tracker.html")
     tracker_parser.add_argument("--trail-length", type=int, default=12, help="Number of recent snapshots to draw as trails")
     tracker_parser.set_defaults(func=cmd_tracker)
+
+    backfill_parser = subparsers.add_parser("backfill-weekly")
+    backfill_parser.add_argument("--weeks", type=int, default=8, help="Number of prior complete weekly closes")
+    backfill_parser.add_argument("--provider", default="yfinance", choices=provider_names())
+    backfill_parser.add_argument("--period", default="1y")
+    backfill_parser.add_argument("--overwrite", action="store_true", help="Replace existing backfill files")
+    backfill_parser.add_argument("--no-tracker", action="store_true", help="Do not refresh tracker after writing snapshots")
+    backfill_parser.set_defaults(func=cmd_backfill_weekly)
     return parser
 
 

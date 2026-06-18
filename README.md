@@ -53,6 +53,9 @@ python3 -m sectors brief
 - `python3 -m sectors tracker`
   - Writes a standalone HTML four-quadrant rotation tracker from all
     time-ordered snapshots.
+- `python3 -m sectors backfill-weekly --weeks 8`
+  - Writes historical weekly-close snapshots for the prior complete weeks and
+    refreshes the tracker.
 - `python3 -m sectors status`
   - Prints latest snapshot and report paths.
 
@@ -138,3 +141,20 @@ Open `reports/sector_rotation_tracker.html` in a browser. The chart uses:
 
 The slider steps through snapshots in time order. `Play` animates the sequence,
 and each sector keeps a short trail so rotation paths are visible.
+
+## Weekly Backfill
+
+Backfill the previous 8 complete weekly closes:
+
+```sh
+python3 -m sectors backfill-weekly --weeks 8 --provider yfinance --period 1y
+```
+
+This writes files named like:
+
+```text
+state/snapshots/backfill-weekly-YYYY-MM-DD.json
+```
+
+Existing weekly backfill files are skipped unless `--overwrite` is provided.
+The tracker is refreshed automatically.

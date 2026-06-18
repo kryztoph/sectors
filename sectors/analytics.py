@@ -14,16 +14,18 @@ def build_snapshot(
     sectors: list[Instrument],
     history: dict[str, list[PriceBar]],
     provider: str,
+    created_at: str | None = None,
+    as_of: str | None = None,
 ) -> dict[str, object]:
     benchmark_bars = history.get(benchmark.symbol, [])
     if len(benchmark_bars) < 64:
         raise ValueError(f"{benchmark.symbol} needs at least 64 price bars")
 
     metrics = calculate_sector_metrics(benchmark, sectors, history)
-    as_of = max(bar.date for bars in history.values() for bar in bars) if history else "unknown"
+    snapshot_as_of = as_of or (max(bar.date for bars in history.values() for bar in bars) if history else "unknown")
     return {
-        "created_at": utc_timestamp(),
-        "as_of": as_of,
+        "created_at": created_at or utc_timestamp(),
+        "as_of": snapshot_as_of,
         "provider": provider,
         "benchmark": {"symbol": benchmark.symbol, "name": benchmark.name},
         "sectors": [{"symbol": sector.symbol, "name": sector.name} for sector in sectors],

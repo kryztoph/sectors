@@ -47,7 +47,7 @@ class SampleMarketDataProvider(MarketDataProvider):
 
     def fetch_history(self, symbols: list[str], period: str = "1y") -> dict[str, list[PriceBar]]:
         end = date(2026, 6, 17)
-        start = end - timedelta(days=95)
+        start = end - timedelta(days=220)
         profiles = {
             "SPY": (500.0, 0.0018),
             "XLK": (225.0, 0.0032),

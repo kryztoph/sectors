@@ -32,7 +32,7 @@ def load_snapshots(snapshot_dir: Path) -> list[dict[str, Any]]:
             continue
         if isinstance(data, dict) and isinstance(data.get("metrics"), list):
             snapshots.append(data)
-    return sorted(snapshots, key=lambda item: str(item.get("created_at", "")))
+    return sorted(snapshots, key=_snapshot_sort_key)
 
 
 def build_rotation_series(snapshots: list[dict[str, Any]]) -> dict[str, Any]:
@@ -154,7 +154,7 @@ def build_tracker_html(series: dict[str, Any], trail_length: int = 12) -> str:
     }}
     .layout {{
       display: grid;
-      grid-template-columns: minmax(0, 1fr) 340px;
+      grid-template-columns: minmax(0, 1fr) 460px;
       gap: 18px;
       align-items: start;
     }}
@@ -219,6 +219,46 @@ def build_tracker_html(series: dict[str, Any], trail_length: int = 12) -> str:
       border-radius: 50%;
       display: inline-block;
     }}
+    .snapshot-controls {{
+      display: flex;
+      gap: 8px;
+      margin: 2px 0 10px;
+    }}
+    .snapshot-controls button {{
+      height: 30px;
+      min-width: 72px;
+      font-size: 12px;
+    }}
+    .row-toggle {{
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+      cursor: pointer;
+    }}
+    .row-toggle input {{
+      flex: 0 0 auto;
+      width: 14px;
+      height: 14px;
+      margin: 0;
+    }}
+    .sector-code {{
+      font-weight: 700;
+      white-space: nowrap;
+    }}
+    .name-cell {{
+      min-width: 190px;
+      white-space: nowrap;
+      color: var(--muted);
+    }}
+    .sector-line {{
+      width: 14px;
+      height: 3px;
+      border-radius: 2px;
+      display: inline-block;
+      margin-right: 6px;
+      vertical-align: middle;
+    }}
     table {{
       width: 100%;
       border-collapse: collapse;
@@ -235,6 +275,9 @@ def build_tracker_html(series: dict[str, Any], trail_length: int = 12) -> str:
       font-weight: 620;
     }}
     td.num, th.num {{ text-align: right; }}
+    tr.hidden-sector td {{
+      color: #9aa3af;
+    }}
     .note {{
       margin-top: 12px;
       color: var(--muted);
@@ -278,10 +321,15 @@ def build_tracker_html(series: dict[str, Any], trail_length: int = 12) -> str:
           <span><i class="swatch" style="background: var(--improving)"></i>Improving</span>
         </div>
         <h2>Selected Snapshot</h2>
+        <div class="snapshot-controls">
+          <button id="showAll" type="button">Show All</button>
+          <button id="hideAll" type="button">Hide All</button>
+        </div>
         <table>
           <thead>
             <tr>
               <th>Sector</th>
+              <th>Name</th>
               <th class="num">RS</th>
               <th class="num">Mom</th>
             </tr>
@@ -304,6 +352,8 @@ def build_tracker_html(series: dict[str, Any], trail_length: int = 12) -> str:
     const frameLabel = document.getElementById("frameLabel");
     const asOf = document.getElementById("asOf");
     const rows = document.getElementById("rows");
+    const showAll = document.getElementById("showAll");
+    const hideAll = document.getElementById("hideAll");
     const colors = {{
       LEADING: "#1f8f5f",
       WEAKENING: "#c47b20",
@@ -312,6 +362,7 @@ def build_tracker_html(series: dict[str, Any], trail_length: int = 12) -> str:
     }};
     const sectorColors = ["#2563eb", "#16a34a", "#dc2626", "#9333ea", "#ca8a04", "#0891b2", "#be123c", "#4d7c0f", "#7c3aed", "#ea580c", "#0f766e"];
     const colorBySymbol = Object.fromEntries((SERIES.sectors || []).map((s, i) => [s.symbol, sectorColors[i % sectorColors.length]]));
+    const visibleSymbols = new Set((SERIES.sectors || []).map(s => s.symbol));
     let timer = null;
 
     function quadrant(point) {{
@@ -322,7 +373,7 @@ def build_tracker_html(series: dict[str, Any], trail_length: int = 12) -> str:
     }}
 
     function bounds() {{
-      const all = SERIES.frames.flatMap(f => f.points);
+      const all = SERIES.frames.flatMap(f => f.points).filter(p => visibleSymbols.has(p.symbol));
       const maxX = Math.max(20, ...all.map(p => Math.abs(p.x || 0)));
       const maxY = Math.max(5, ...all.map(p => Math.abs(p.y || 0)));
       return {{ x: Math.ceil(maxX / 10) * 10, y: Math.ceil(maxY / 5) * 5 }};
@@ -402,6 +453,7 @@ def build_tracker_html(series: dict[str, Any], trail_length: int = 12) -> str:
     function drawTrails(index, b) {{
       const start = Math.max(0, index - TRAIL_LENGTH + 1);
       for (const sector of SERIES.sectors || []) {{
+        if (!visibleSymbols.has(sector.symbol)) continue;
         const trail = [];
         for (let i = start; i <= index; i++) {{
           const point = (SERIES.frames[i]?.points || []).find(p => p.symbol === sector.symbol);
@@ -421,6 +473,7 @@ def build_tracker_html(series: dict[str, Any], trail_length: int = 12) -> str:
     function drawPoints(index, b) {{
       const frame = SERIES.frames[index];
       for (const point of frame.points) {{
+        if (!visibleSymbols.has(point.symbol)) continue;
         const p = project(point, b);
         const q = quadrant(point);
         ctx.fillStyle = colors[q];
@@ -442,13 +495,39 @@ def build_tracker_html(series: dict[str, Any], trail_length: int = 12) -> str:
       asOf.textContent = `As of: ${{frame.asOf}} | Created: ${{frame.createdAt}}`;
       rows.innerHTML = "";
       for (const point of [...frame.points].sort((a, b) => b.x - a.x)) {{
+        const checked = visibleSymbols.has(point.symbol) ? "checked" : "";
+        const hiddenClass = visibleSymbols.has(point.symbol) ? "" : " class='hidden-sector'";
         const tr = document.createElement("tr");
-        tr.innerHTML = `<td>${{point.symbol}}</td><td class="num">${{point.x.toFixed(1)}}</td><td class="num">${{point.y.toFixed(1)}}</td>`;
+        tr.innerHTML = `<td><label class="row-toggle"><input type="checkbox" value="${{point.symbol}}" ${{checked}}><span class="sector-line" style="background:${{colorBySymbol[point.symbol] || "#334155"}}"></span><span class="sector-code">${{point.symbol}}</span></label></td><td class="name-cell" title="${{point.name}}">${{point.name}}</td><td class="num">${{point.x.toFixed(1)}}</td><td class="num">${{point.y.toFixed(1)}}</td>`;
+        if (hiddenClass) tr.className = "hidden-sector";
         rows.appendChild(tr);
       }}
     }}
 
+    function setAllSectors(checked) {{
+      for (const sector of SERIES.sectors || []) {{
+        if (checked) {{
+          visibleSymbols.add(sector.symbol);
+        }} else {{
+          visibleSymbols.delete(sector.symbol);
+        }}
+      }}
+      draw(Number(slider.value));
+    }}
+
     slider.addEventListener("input", () => draw(Number(slider.value)));
+    rows.addEventListener("change", (event) => {{
+      const input = event.target;
+      if (!input.matches("input[type='checkbox']")) return;
+      if (input.checked) {{
+        visibleSymbols.add(input.value);
+      }} else {{
+        visibleSymbols.delete(input.value);
+      }}
+      draw(Number(slider.value));
+    }});
+    showAll.addEventListener("click", () => setAllSectors(true));
+    hideAll.addEventListener("click", () => setAllSectors(false));
     play.addEventListener("click", () => {{
       if (timer) {{
         clearInterval(timer);
@@ -476,3 +555,7 @@ def _float(value: Any) -> float | None:
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
+def _snapshot_sort_key(snapshot: dict[str, Any]) -> tuple[str, str]:
+    return (str(snapshot.get("as_of", "")), str(snapshot.get("created_at", "")))
