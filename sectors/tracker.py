@@ -137,9 +137,26 @@ def build_tracker_html(series: dict[str, Any], trail_length: int = 12) -> str:
     header {{
       display: flex;
       justify-content: space-between;
-      align-items: end;
+      align-items: center;
       gap: 16px;
       margin-bottom: 18px;
+    }}
+    .brand {{
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--text);
+      text-decoration: none;
+      margin-bottom: 8px;
+    }}
+    .brand-logo {{
+      width: 46px;
+      height: auto;
+      display: block;
+    }}
+    .brand-text {{
+      font-size: 18px;
+      font-weight: 750;
     }}
     h1 {{
       margin: 0;
@@ -152,6 +169,24 @@ def build_tracker_html(series: dict[str, Any], trail_length: int = 12) -> str:
       font-size: 14px;
       text-align: right;
     }}
+    .actions {{
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 10px;
+    }}
+    .actions a {{
+      border: 1px solid var(--line);
+      background: var(--panel);
+      border-radius: 999px;
+      color: #245fa8;
+      font-size: 14px;
+      font-weight: 650;
+      padding: 7px 11px;
+      text-decoration: none;
+    }}
+    .actions a:hover {{ text-decoration: underline; }}
     .layout {{
       display: grid;
       grid-template-columns: minmax(0, 1fr) 460px;
@@ -246,6 +281,16 @@ def build_tracker_html(series: dict[str, Any], trail_length: int = 12) -> str:
       font-weight: 700;
       white-space: nowrap;
     }}
+    .sector-link {{
+      color: var(--text);
+      font-weight: 700;
+      text-decoration: none;
+      white-space: nowrap;
+    }}
+    .sector-link:hover {{
+      color: #2563eb;
+      text-decoration: underline;
+    }}
     .name-cell {{
       min-width: 190px;
       white-space: nowrap;
@@ -283,9 +328,18 @@ def build_tracker_html(series: dict[str, Any], trail_length: int = 12) -> str:
       color: var(--muted);
       font-size: 13px;
     }}
+    .report-footer {{
+      margin-top: 18px;
+      padding-top: 14px;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 13px;
+      text-align: center;
+    }}
     @media (max-width: 900px) {{
       header {{ align-items: start; flex-direction: column; }}
       .meta {{ text-align: left; }}
+      .actions {{ justify-content: flex-start; }}
       .layout {{ grid-template-columns: 1fr; }}
       .toolbar {{ grid-template-columns: auto 1fr; }}
       .frame-label {{ grid-column: 1 / -1; text-align: left; }}
@@ -296,11 +350,20 @@ def build_tracker_html(series: dict[str, Any], trail_length: int = 12) -> str:
   <main>
     <header>
       <div>
+        <a class="brand" href="../../index.html" aria-label="CSFox home">
+          <img class="brand-logo" src="../../assets/logo.png" alt="">
+          <span class="brand-text">CSFox.com</span>
+        </a>
         <h1>{html.escape(title)}</h1>
       </div>
       <div class="meta">
         <div id="asOf">Frames: {frame_count}</div>
         <div>Trail length: {trail_length} snapshots</div>
+        <nav class="actions" aria-label="Report links">
+          <a href="latest-brief.html">Latest brief</a>
+          <a href="sector_charts.html">Sector charts</a>
+          <a href="latest-brief.md">Markdown brief</a>
+        </nav>
       </div>
     </header>
     <section class="layout" aria-label="Sector rotation tracker">
@@ -339,6 +402,7 @@ def build_tracker_html(series: dict[str, Any], trail_length: int = 12) -> str:
         <p class="note">X-axis is relative strength score. Y-axis is change in score versus the prior snapshot. Sector trails show the recent path through time.</p>
       </aside>
     </section>
+    <footer class="report-footer">Copyright &copy; 2026 csfox.com. All rights reserved.</footer>
   </main>
   <script>
     const SERIES = {payload};
@@ -491,17 +555,30 @@ def build_tracker_html(series: dict[str, Any], trail_length: int = 12) -> str:
 
     function updateTable(index) {{
       const frame = SERIES.frames[index];
-      frameLabel.textContent = `${{index + 1}} / ${{SERIES.frames.length}}`;
+      frameLabel.textContent = `${{frame.asOf}} (${{index + 1}} / ${{SERIES.frames.length}})`;
       asOf.textContent = `As of: ${{frame.asOf}} | Created: ${{frame.createdAt}}`;
       rows.innerHTML = "";
       for (const point of [...frame.points].sort((a, b) => b.x - a.x)) {{
         const checked = visibleSymbols.has(point.symbol) ? "checked" : "";
         const hiddenClass = visibleSymbols.has(point.symbol) ? "" : " class='hidden-sector'";
+        const symbol = escapeHtml(point.symbol);
+        const name = escapeHtml(point.name);
+        const href = `charts/${{encodeURIComponent(point.symbol)}}.html`;
         const tr = document.createElement("tr");
-        tr.innerHTML = `<td><label class="row-toggle"><input type="checkbox" value="${{point.symbol}}" ${{checked}}><span class="sector-line" style="background:${{colorBySymbol[point.symbol] || "#334155"}}"></span><span class="sector-code">${{point.symbol}}</span></label></td><td class="name-cell" title="${{point.name}}">${{point.name}}</td><td class="num">${{point.x.toFixed(1)}}</td><td class="num">${{point.y.toFixed(1)}}</td>`;
+        tr.innerHTML = `<td><span class="row-toggle"><input type="checkbox" value="${{symbol}}" ${{checked}}><span class="sector-line" style="background:${{colorBySymbol[point.symbol] || "#334155"}}"></span><a class="sector-link" href="${{href}}" title="Open ${{symbol}} chart">${{symbol}}</a></span></td><td class="name-cell" title="${{name}}">${{name}}</td><td class="num">${{point.x.toFixed(1)}}</td><td class="num">${{point.y.toFixed(1)}}</td>`;
         if (hiddenClass) tr.className = "hidden-sector";
         rows.appendChild(tr);
       }}
+    }}
+
+    function escapeHtml(value) {{
+      return String(value ?? "").replace(/[&<>"']/g, char => ({{
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;"
+      }}[char]));
     }}
 
     function setAllSectors(checked) {{

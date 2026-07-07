@@ -4,6 +4,7 @@ import math
 from statistics import mean, stdev
 
 from .model import Instrument, PriceBar, SectorMetric, utc_timestamp
+from .market_data import serialize_history
 
 
 WINDOWS = {"5d": 5, "21d": 21, "63d": 63}
@@ -30,13 +31,7 @@ def build_snapshot(
         "benchmark": {"symbol": benchmark.symbol, "name": benchmark.name},
         "sectors": [{"symbol": sector.symbol, "name": sector.name} for sector in sectors],
         "metrics": [_metric_to_dict(metric) for metric in metrics],
-        "market": {
-            symbol: [
-                {"date": bar.date, "close": bar.close, "volume": bar.volume}
-                for bar in bars
-            ]
-            for symbol, bars in history.items()
-        },
+        "market": serialize_history(history),
     }
 
 

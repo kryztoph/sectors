@@ -14,6 +14,9 @@ class Instrument:
 class PriceBar:
     date: str
     close: float
+    open: float | None = None
+    high: float | None = None
+    low: float | None = None
     volume: int | None = None
 
 

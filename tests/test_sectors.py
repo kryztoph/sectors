@@ -1,37 +1,44 @@
 from __future__ import annotations
 
 import unittest
+from datetime import date, timedelta
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from sectors.analytics import build_snapshot
 from sectors.backfill import _latest_complete_weekly_closes, _truncate_history
+from sectors.charts import write_sector_charts
 from sectors.config import DEFAULT_UNIVERSE, load_universe, write_json
-from sectors.market_data import SampleMarketDataProvider
-from sectors.report import build_brief
+from sectors.cli import build_parser
+from sectors.model import PriceBar
+from sectors.report import build_brief, build_brief_html
 from sectors.tracker import build_rotation_series, build_tracker_html, load_snapshots
 
 
 class SectorMonitorTests(unittest.TestCase):
-    def test_sample_snapshot_ranks_all_11_sectors(self) -> None:
+    def test_snapshot_ranks_all_11_sectors(self) -> None:
         with TemporaryDirectory() as tmp:
             root = Path(tmp)
             write_json(root / "config" / "universe.json", DEFAULT_UNIVERSE)
             benchmark, sectors = load_universe(root)
             symbols = [benchmark.symbol] + [sector.symbol for sector in sectors]
-            provider = SampleMarketDataProvider()
+            history = _fixture_history(symbols)
 
             snapshot = build_snapshot(
                 benchmark,
                 sectors,
-                provider.fetch_history(symbols),
-                provider=provider.name,
+                history,
+                provider="test-fixture",
             )
 
         metrics = snapshot["metrics"]
         self.assertEqual(len(metrics), 11)
         self.assertEqual([row["rank"] for row in metrics], list(range(1, 12)))
         self.assertEqual(metrics[0]["signal"], "LEADING")
+        spy_bar = snapshot["market"]["SPY"][-1]
+        self.assertIn("open", spy_bar)
+        self.assertIn("high", spy_bar)
+        self.assertIn("low", spy_bar)
 
     def test_brief_contains_rankings_table(self) -> None:
         with TemporaryDirectory() as tmp:
@@ -39,19 +46,23 @@ class SectorMonitorTests(unittest.TestCase):
             write_json(root / "config" / "universe.json", DEFAULT_UNIVERSE)
             benchmark, sectors = load_universe(root)
             symbols = [benchmark.symbol] + [sector.symbol for sector in sectors]
-            provider = SampleMarketDataProvider()
+            history = _fixture_history(symbols)
             snapshot = build_snapshot(
                 benchmark,
                 sectors,
-                provider.fetch_history(symbols),
-                provider=provider.name,
+                history,
+                provider="test-fixture",
             )
 
         brief = build_brief(snapshot)
+        brief_html = build_brief_html(snapshot)
 
         self.assertIn("# Sector Rotation Brief", brief)
         self.assertIn("| Rank | Sector | Symbol |", brief)
         self.assertIn("Relative returns are sector ETF returns minus SPY", brief)
+        self.assertIn("<table>", brief_html)
+        self.assertIn("../../assets/logo.png", brief_html)
+        self.assertIn("latest-brief.md", brief_html)
 
     def test_tracker_builds_frames_and_html(self) -> None:
         with TemporaryDirectory() as tmp:
@@ -59,18 +70,18 @@ class SectorMonitorTests(unittest.TestCase):
             write_json(root / "config" / "universe.json", DEFAULT_UNIVERSE)
             benchmark, sectors = load_universe(root)
             symbols = [benchmark.symbol] + [sector.symbol for sector in sectors]
-            provider = SampleMarketDataProvider()
+            history = _fixture_history(symbols)
             first = build_snapshot(
                 benchmark,
                 sectors,
-                provider.fetch_history(symbols),
-                provider=provider.name,
+                history,
+                provider="test-fixture",
             )
             second = build_snapshot(
                 benchmark,
                 sectors,
-                provider.fetch_history(symbols),
-                provider=provider.name,
+                history,
+                provider="test-fixture",
             )
             first["created_at"] = "20260617T213000Z"
             second["created_at"] = "20260618T213000Z"
@@ -87,11 +98,16 @@ class SectorMonitorTests(unittest.TestCase):
         self.assertIn("row-toggle", html)
         self.assertIn("name-cell", html)
         self.assertIn("visibleSymbols", html)
+        self.assertIn("frame.asOf", html)
+        self.assertIn('href="${href}"', html)
+        self.assertIn("charts/${encodeURIComponent(point.symbol)}.html", html)
+        self.assertIn("latest-brief.html", html)
+        self.assertIn("../../assets/logo.png", html)
+        self.assertIn("Copyright &copy; 2026 csfox.com", html)
 
     def test_weekly_backfill_helpers_select_prior_complete_weeks(self) -> None:
-        provider = SampleMarketDataProvider()
         symbols = ["SPY", "XLK", "XLF"]
-        history = provider.fetch_history(symbols)
+        history = _fixture_history(symbols)
 
         closes = _latest_complete_weekly_closes(history, 8)
         truncated = _truncate_history(history, closes[-1].isoformat())
@@ -112,6 +128,101 @@ class SectorMonitorTests(unittest.TestCase):
             snapshots = load_snapshots(snapshot_dir)
 
         self.assertEqual([item["as_of"] for item in snapshots], ["2026-05-01", "2026-06-18"])
+
+    def test_sector_charts_write_index_and_sector_pages(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_json(root / "config" / "universe.json", DEFAULT_UNIVERSE)
+            benchmark, sectors = load_universe(root)
+            symbols = [benchmark.symbol] + [sector.symbol for sector in sectors]
+            history = _fixture_history(symbols)
+            snapshot = build_snapshot(
+                benchmark,
+                sectors,
+                history,
+                provider="test-fixture",
+            )
+            write_json(root / "state" / "snapshots" / "latest.json", snapshot)
+
+            written = write_sector_charts(root)
+            index = written[0].read_text(encoding="utf-8")
+            sector_page = (root / "reports" / "charts" / "XLK.html").read_text(encoding="utf-8")
+
+        self.assertEqual(len(written), 12)
+        self.assertIn("Sector Charts", index)
+        self.assertIn("charts/XLK.html", index)
+        self.assertIn("../../assets/logo.png", index)
+        self.assertIn("Copyright &copy; 2026 csfox.com", index)
+        self.assertIn("candlestick chart with volume moving average", sector_page)
+        self.assertIn("../../../assets/logo.png", sector_page)
+        self.assertIn("Copyright &copy; 2026 csfox.com", sector_page)
+        self.assertIn("sector_rotation_tracker.html", sector_page)
+        self.assertNotIn("sector_charts.html", sector_page)
+        self.assertIn("Relative strength vs SPY", sector_page)
+        self.assertIn("trendline", sector_page)
+
+    def test_tracker_publish_flags_default_to_publish(self) -> None:
+        parser = build_parser()
+
+        tracker_default = parser.parse_args(["tracker"])
+        tracker_local = parser.parse_args(["tracker", "--no-publish"])
+        backfill_default = parser.parse_args(["backfill-weekly"])
+        backfill_local = parser.parse_args(["backfill-weekly", "--no-publish"])
+
+        self.assertTrue(tracker_default.publish)
+        self.assertFalse(tracker_local.publish)
+        self.assertTrue(backfill_default.publish)
+        self.assertFalse(backfill_local.publish)
+
+
+def _fixture_history(symbols: list[str]) -> dict[str, list[PriceBar]]:
+    end = date(2026, 6, 17)
+    start = end - timedelta(days=220)
+    profiles = {
+        "SPY": (500.0, 0.0018),
+        "XLK": (225.0, 0.0032),
+        "XLI": (128.0, 0.0024),
+        "XLF": (45.0, 0.0021),
+        "XLE": (92.0, 0.0017),
+        "XLY": (185.0, 0.0014),
+        "XLV": (145.0, 0.0007),
+        "XLC": (88.0, 0.0028),
+        "XLB": (91.0, 0.0005),
+        "XLRE": (41.0, -0.0002),
+        "XLP": (78.0, -0.0001),
+        "XLU": (73.0, 0.0002),
+    }
+    return {
+        symbol: _fixture_bars(start, end, *profiles.get(symbol, (100.0, 0.001)), symbol=symbol)
+        for symbol in symbols
+    }
+
+
+def _fixture_bars(start: date, end: date, base: float, drift: float, symbol: str) -> list[PriceBar]:
+    bars: list[PriceBar] = []
+    current = start
+    index = 0
+    symbol_noise = (sum(ord(char) for char in symbol) % 9) / 1000
+    while current <= end:
+        if current.weekday() < 5:
+            cycle = ((index % 13) - 6) / 1000
+            close = base * (1 + drift * index + symbol_noise + cycle)
+            open_price = close * (1 - 0.002 + (index % 5) / 5000)
+            high = max(open_price, close) * (1 + 0.003)
+            low = min(open_price, close) * (1 - 0.003)
+            bars.append(
+                PriceBar(
+                    date=current.isoformat(),
+                    close=round(close, 2),
+                    open=round(open_price, 2),
+                    high=round(high, 2),
+                    low=round(low, 2),
+                    volume=20_000_000 + index * 100_000,
+                )
+            )
+            index += 1
+        current += timedelta(days=1)
+    return bars
 
 
 if __name__ == "__main__":
