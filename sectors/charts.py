@@ -92,6 +92,7 @@ def build_sector_chart_html(
 ) -> str:
     metric = metric or {}
     svg = _build_svg(symbol, benchmark_symbol, bars, benchmark)
+    interaction_script = _chart_interaction_script()
     title = f"{symbol} Sector Chart"
     rel = metric.get("relative_returns") if isinstance(metric.get("relative_returns"), dict) else {}
     stats = [
@@ -128,9 +129,11 @@ def build_sector_chart_html(
     </header>
     <section class="chart" aria-label="{html.escape(symbol)} candlestick chart">
       {svg}
+      <p class="chart-hint">Hover over the price chart to inspect the date and price.</p>
     </section>
     {_footer_html()}
   </main>
+  <script>{interaction_script}</script>
 </body>
 </html>
 """
@@ -224,8 +227,9 @@ def _build_svg(symbol: str, benchmark_symbol: str, bars: list[ChartBar], benchma
         return rs_top + (rs_max - value) * rs_height / (rs_max - rs_min)
 
     candle_width = max(3.0, min(9.0, plot_width / len(bars) * 0.58))
+    dates = html.escape(json.dumps([bar.date for bar in bars], separators=(",", ":")), quote=True)
     parts = [
-        f'<svg viewBox="0 0 {width} {height}" role="img" aria-label="{html.escape(symbol)} candlestick chart with volume moving average, relative strength, and trendlines">',
+        f'<svg class="sector-chart" viewBox="0 0 {width} {height}" role="img" data-dates="{dates}" data-price-min="{price_min:.10g}" data-price-max="{price_max:.10g}" aria-label="{html.escape(symbol)} interactive candlestick chart with volume moving average, relative strength, and trendlines">',
         '<rect class="svg-bg" x="0" y="0" width="1120" height="760"/>',
         _panel(left, price_top, plot_width, price_height, f"{symbol} candlestick with 20d and 50d moving averages"),
         _panel(left, volume_top, plot_width, volume_height, "Volume and 20d volume MA"),
@@ -260,10 +264,100 @@ def _build_svg(symbol: str, benchmark_symbol: str, bars: list[ChartBar], benchma
             _legend(width - 380, 24),
             f'<text class="date start" x="{left}" y="{height - 18}">{html.escape(bars[0].date)}</text>',
             f'<text class="date end" x="{left + plot_width}" y="{height - 18}">{html.escape(bars[-1].date)}</text>',
+            f'''<g class="crosshair" hidden aria-hidden="true">
+  <line class="crosshair-line crosshair-x" x1="{left}" x2="{left}" y1="{price_top}" y2="{rs_top + rs_height}"/>
+  <line class="crosshair-line crosshair-y" x1="{left}" x2="{left + plot_width}" y1="{price_top}" y2="{price_top}"/>
+  <circle class="crosshair-point" cx="{left}" cy="{price_top}" r="3.5"/>
+  <g class="crosshair-tooltip">
+    <rect width="154" height="48" rx="5"/>
+    <text class="crosshair-date" x="10" y="18"></text>
+    <text class="crosshair-price" x="10" y="38"></text>
+  </g>
+</g>''',
+            f'<rect class="crosshair-hitbox" x="{left}" y="{price_top}" width="{plot_width}" height="{price_height}" data-left="{left}" data-top="{price_top}" data-width="{plot_width}" data-height="{price_height}"/>',
             "</svg>",
         ]
     )
     return "\n".join(part for part in parts if part)
+
+
+def _chart_interaction_script() -> str:
+    return r"""
+    (() => {
+      const svg = document.querySelector("svg.sector-chart");
+      if (!svg) return;
+
+      const hitbox = svg.querySelector(".crosshair-hitbox");
+      const crosshair = svg.querySelector(".crosshair");
+      const vertical = svg.querySelector(".crosshair-x");
+      const horizontal = svg.querySelector(".crosshair-y");
+      const point = svg.querySelector(".crosshair-point");
+      const tooltip = svg.querySelector(".crosshair-tooltip");
+      const dateLabel = svg.querySelector(".crosshair-date");
+      const priceLabel = svg.querySelector(".crosshair-price");
+      if (!hitbox || !crosshair || !vertical || !horizontal || !point || !tooltip || !dateLabel || !priceLabel) return;
+
+      const dates = JSON.parse(svg.dataset.dates || "[]");
+      const priceMin = Number(svg.dataset.priceMin);
+      const priceMax = Number(svg.dataset.priceMax);
+      const left = Number(hitbox.dataset.left);
+      const top = Number(hitbox.dataset.top);
+      const width = Number(hitbox.dataset.width);
+      const height = Number(hitbox.dataset.height);
+      const priceFormatter = new Intl.NumberFormat("en-US", {
+        style: "currency",
+        currency: "USD",
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      });
+
+      function chartPoint(event) {
+        const point = svg.createSVGPoint();
+        point.x = event.clientX;
+        point.y = event.clientY;
+        return point.matrixTransform(svg.getScreenCTM().inverse());
+      }
+
+      function showAt(x, y) {
+        const clampedX = Math.max(left, Math.min(left + width, x));
+        const clampedY = Math.max(top, Math.min(top + height, y));
+        const ratioX = width ? (clampedX - left) / width : 0;
+        const index = Math.max(0, Math.min(dates.length - 1, Math.round(ratioX * (dates.length - 1))));
+        const price = priceMax - ((clampedY - top) / height) * (priceMax - priceMin);
+
+        vertical.setAttribute("x1", clampedX);
+        vertical.setAttribute("x2", clampedX);
+        horizontal.setAttribute("y1", clampedY);
+        horizontal.setAttribute("y2", clampedY);
+        point.setAttribute("cx", clampedX);
+        point.setAttribute("cy", clampedY);
+        dateLabel.textContent = dates[index] || "";
+        priceLabel.textContent = priceFormatter.format(price);
+
+        const tooltipWidth = 154;
+        const tooltipHeight = 48;
+        const tooltipX = clampedX + 12 + tooltipWidth <= left + width
+          ? clampedX + 12
+          : clampedX - tooltipWidth - 12;
+        const tooltipY = clampedY - 10 - tooltipHeight >= top
+          ? clampedY - tooltipHeight - 10
+          : clampedY + 10;
+        tooltip.setAttribute("transform", `translate(${tooltipX} ${tooltipY})`);
+        crosshair.removeAttribute("hidden");
+      }
+
+      hitbox.addEventListener("pointermove", (event) => {
+        const position = chartPoint(event);
+        showAt(position.x, position.y);
+      });
+      hitbox.addEventListener("pointerleave", () => { crosshair.setAttribute("hidden", ""); });
+      hitbox.addEventListener("pointerdown", (event) => {
+        const position = chartPoint(event);
+        showAt(position.x, position.y);
+      });
+      svg.addEventListener("blur", () => { crosshair.setAttribute("hidden", ""); });
+    })();
+    """
 
 
 def _parse_bars(rows: object) -> list[ChartBar]:
@@ -497,6 +591,11 @@ def _css() -> str:
       padding: 12px;
       overflow-x: auto;
     }
+    .chart-hint {
+      margin: 8px 0 0;
+      text-align: center;
+      font-size: 12px;
+    }
     svg {
       display: block;
       width: 100%;
@@ -586,6 +685,35 @@ def _css() -> str:
     }
     .panel-title { font-weight: 700; }
     .date.end { text-anchor: end; }
+    .crosshair[hidden] { display: none; }
+    .crosshair, .crosshair * { pointer-events: none; }
+    .crosshair-line {
+      stroke: #526071;
+      stroke-width: 1;
+      stroke-dasharray: 4 4;
+      vector-effect: non-scaling-stroke;
+    }
+    .crosshair-point {
+      fill: #ffffff;
+      stroke: #253244;
+      stroke-width: 1.5;
+      vector-effect: non-scaling-stroke;
+    }
+    .crosshair-tooltip rect {
+      fill: rgba(23, 32, 42, 0.94);
+      stroke: rgba(255, 255, 255, 0.5);
+      stroke-width: 1;
+    }
+    .crosshair-tooltip text {
+      fill: #ffffff;
+      font-size: 13px;
+    }
+    .crosshair-price { font-weight: 750; }
+    .crosshair-hitbox {
+      fill: transparent;
+      pointer-events: all;
+      cursor: crosshair;
+    }
     .report-footer {
       margin-top: 18px;
       padding-top: 14px;

@@ -160,6 +160,11 @@ class SectorMonitorTests(unittest.TestCase):
         self.assertNotIn("sector_charts.html", sector_page)
         self.assertIn("Relative strength vs SPY", sector_page)
         self.assertIn("trendline", sector_page)
+        self.assertIn('class="crosshair-line crosshair-x"', sector_page)
+        self.assertIn('class="crosshair-line crosshair-y"', sector_page)
+        self.assertIn('class="crosshair-tooltip"', sector_page)
+        self.assertIn('hitbox.addEventListener("pointermove"', sector_page)
+        self.assertIn('crosshair.removeAttribute("hidden")', sector_page)
 
     def test_tracker_publish_flags_default_to_publish(self) -> None:
         parser = build_parser()
