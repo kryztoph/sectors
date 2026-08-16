@@ -32,6 +32,12 @@ Benchmark:
 
 - SPY: S&P 500 ETF
 
+Reference ETFs:
+
+- SPY: S&P 500 ETF
+- RSP: Invesco S&P 500 Equal Weight ETF
+- QQQ: Invesco QQQ Trust
+
 ## Data Integrity Rules
 
 - Never fabricate prices, returns, rankings, or rotation signals.

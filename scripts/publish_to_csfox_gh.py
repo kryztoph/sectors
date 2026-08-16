@@ -60,7 +60,7 @@ def main() -> int:
         f"repos/{repo}/git/commits",
         method="POST",
         body={
-            "message": "Update sector reports",
+            "message": "Update published reports",
             "tree": tree["sha"],
             "parents": [base_commit],
         },
@@ -70,7 +70,7 @@ def main() -> int:
         method="PATCH",
         body={"sha": commit["sha"], "force": False},
     )
-    print(f"published sector reports to {repo}@{BRANCH}: {commit['sha']}")
+    print(f"published report trees to {repo}@{BRANCH}: {commit['sha']}")
     return 0
 
 
@@ -94,34 +94,55 @@ def _repo_name() -> str:
 
 
 def _publish_files() -> list[tuple[Path, str]]:
-    required = [
-        Path("reports/sector_rotation_tracker.html"),
-    ]
+    files: list[tuple[Path, str]] = []
+    if LOGO_SOURCE.is_file():
+        files.append((LOGO_SOURCE, "assets/logo.png"))
+
+    files.extend(_sector_files())
+    files.extend(_cotpy_files())
+
+    if not files:
+        raise FileNotFoundError("no report files found to publish")
+    return files
+
+
+def _sector_files() -> list[tuple[Path, str]]:
+    tracker = Path("reports/sector_rotation_tracker.html")
+    charts_index = Path("reports/sector_charts.html")
+    briefs = sorted(path for path in Path("reports").glob("*-brief.md") if path.name != "latest-brief.md")
+
+    required = [tracker, charts_index]
     for path in required:
         if not path.is_file():
-            raise FileNotFoundError(f"missing {path}; regenerate reports first")
-    if not LOGO_SOURCE.is_file():
-        raise FileNotFoundError(f"missing logo source at {LOGO_SOURCE}")
-
-    briefs = sorted(path for path in Path("reports").glob("*-brief.md") if path.name != "latest-brief.md")
+            return []
     if not briefs:
-        raise FileNotFoundError("no sector brief found under reports/")
+        return []
     latest_brief_html = briefs[-1].with_suffix(".html")
     if not latest_brief_html.is_file():
-        raise FileNotFoundError(f"missing HTML sector brief at {latest_brief_html}; regenerate reports first")
+        return []
 
     chart_pages = sorted(Path("reports/charts").glob("*.html"))
     if not chart_pages:
-        raise FileNotFoundError("no sector chart pages found under reports/charts/")
+        return []
 
     files: list[tuple[Path, str]] = [
-        (LOGO_SOURCE, "assets/logo.png"),
-        (Path("reports/sector_rotation_tracker.html"), "reports/sectors/sector_rotation_tracker.html"),
-        (Path("reports/sector_charts.html"), "reports/sectors/sector_charts.html"),
+        (tracker, "reports/sectors/sector_rotation_tracker.html"),
+        (charts_index, "reports/sectors/sector_charts.html"),
         (latest_brief_html, "reports/sectors/latest-brief.html"),
         (briefs[-1], "reports/sectors/latest-brief.md"),
     ]
     files.extend((path, f"reports/sectors/charts/{path.name}") for path in chart_pages)
+    return files
+
+
+def _cotpy_files() -> list[tuple[Path, str]]:
+    index = Path("reports/cotpy/index.html")
+    chart_pages = sorted(Path("reports/cotpy/charts").glob("*_interactive.html"))
+    if not index.is_file() or not chart_pages:
+        return []
+
+    files: list[tuple[Path, str]] = [(index, "reports/cotpy/index.html")]
+    files.extend((path, f"reports/cotpy/charts/{path.name}") for path in chart_pages)
     return files
 
 

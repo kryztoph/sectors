@@ -9,7 +9,8 @@ import subprocess
 from .analytics import build_snapshot
 from .backfill import backfill_weekly_snapshots
 from .charts import write_sector_charts
-from .config import init_project, load_universe, read_json, validate_universe, write_json
+from .cotpy import write_cotpy_charts
+from .config import init_project, load_references, load_universe, read_json, validate_universe, write_json
 from .market_data import get_market_data_provider, provider_names
 from .model import utc_timestamp
 from .report import write_brief, write_brief_html
@@ -42,10 +43,11 @@ def cmd_validate(args: argparse.Namespace) -> int:
 
 def cmd_snapshot(args: argparse.Namespace) -> int:
     benchmark, sectors = load_universe(ROOT)
-    symbols = [benchmark.symbol] + [sector.symbol for sector in sectors]
+    references = load_references(ROOT)
+    symbols = list(dict.fromkeys(reference.symbol for reference in references + sectors))
     provider = get_market_data_provider(args.provider)
     history = provider.fetch_history(symbols, period=args.period)
-    snapshot = build_snapshot(benchmark, sectors, history, provider=provider.name)
+    snapshot = build_snapshot(benchmark, sectors, history, provider=provider.name, references=references)
     output = Path(args.output) if args.output else ROOT / "state" / "snapshots" / f"{snapshot['created_at']}.json"
     write_json(output, snapshot)
     if args.promote_latest:
@@ -119,6 +121,24 @@ def cmd_charts(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_cotpy(args: argparse.Namespace) -> int:
+    output = Path(args.output) if args.output else None
+    chart_dir = Path(args.chart_dir) if args.chart_dir else None
+    written = write_cotpy_charts(
+        ROOT,
+        provider_name=args.provider,
+        period=args.period,
+        output=output,
+        chart_dir=chart_dir,
+        lookback=args.lookback,
+    )
+    for path in written:
+        print(path)
+    if args.publish and output is None:
+        return _publish_to_reports_repo()
+    return 0
+
+
 def cmd_backfill_weekly(args: argparse.Namespace) -> int:
     written = backfill_weekly_snapshots(
         ROOT,
@@ -184,6 +204,20 @@ def build_parser() -> argparse.ArgumentParser:
     charts_parser.add_argument("--chart-dir", help="Per-sector chart directory; defaults to reports/charts")
     charts_parser.add_argument("--lookback", type=int, default=126, help="Number of recent bars to draw")
     charts_parser.set_defaults(func=cmd_charts)
+
+    cotpy_parser = subparsers.add_parser("cotpy")
+    cotpy_parser.add_argument("--provider", default="yfinance", choices=provider_names())
+    cotpy_parser.add_argument("--period", default="2y")
+    cotpy_parser.add_argument("--output", help="Index HTML output path; defaults to reports/cotpy/index.html")
+    cotpy_parser.add_argument("--chart-dir", help="Commodity chart directory; defaults to reports/cotpy/charts")
+    cotpy_parser.add_argument("--lookback", type=int, default=104, help="Number of weekly bars to draw")
+    cotpy_parser.add_argument(
+        "--publish",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Publish the default cotpy report directly to the csfox GitHub repo after writing it",
+    )
+    cotpy_parser.set_defaults(func=cmd_cotpy)
 
     backfill_parser = subparsers.add_parser("backfill-weekly")
     backfill_parser.add_argument("--weeks", type=int, default=8, help="Number of prior complete weekly closes")

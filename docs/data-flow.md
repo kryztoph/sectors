@@ -10,16 +10,16 @@ Provider in `sectors/market_data.py`:
 
 Triggered by `python3 -m sectors snapshot`:
 
-1. Loads the 11 sectors + SPY benchmark from `config/universe.json`
+1. Loads the 11 sectors plus the configured reference ETFs (SPY, RSP, and QQQ) from `config/universe.json`
 2. Calls `provider.fetch_history(symbols, period)` — gets OHLCV bars for every symbol
 3. `analytics.build_snapshot()` computes the rotation metrics:
    - 5d/21d/63d returns for each sector AND the benchmark
    - Relative return = sector return minus benchmark return (the core of the ranking)
-   - 20d and 50d moving averages → trend score (bullish/constructive/mixed/weak)
+   - 10d, 50d, and 150d moving averages; the 10d/50d pair drives the trend score (bullish/constructive/mixed/weak)
    - 21d realized volatility as a penalty
    - Final score = weighted rank of relative returns + trend rank + vol rank, normalized to roughly -100..+100
    - Signal: LEADING / IMPROVING / WEAKENING / LAGGING based on score + 21d rel return + trend
-4. Writes `state/snapshots/<timestamp>.json` and updates `state/snapshots/latest.json`
+4. Stores all fetched OHLCV histories, including the reference ETFs, in `state/snapshots/<timestamp>.json` and updates `state/snapshots/latest.json`
 
 ## Daily Automation
 
@@ -28,6 +28,14 @@ Triggered by `python3 -m sectors snapshot`:
 - Runs Mon-Fri at 5:30 PM local time
 - Chains: validate → snapshot → brief → tracker → charts
 - Each run produces a new timestamped snapshot, a Markdown brief, the HTML tracker, and per-sector candlestick charts
+
+## Weekly Cotpy Automation
+
+`scripts/run_weekly.sh` installed as a macOS LaunchAgent (`com.fox.sectors.cotpy.weekly`):
+
+- Runs Fridays at 5:45 PM local time
+- Generates the cotpy commodity chart index plus one interactive page per key commodity
+- Publishes the refreshed `reports/cotpy` tree
 
 ## Weekly Backfill
 

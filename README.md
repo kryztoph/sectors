@@ -21,6 +21,8 @@ relative strength, and writes local JSON snapshots plus Markdown briefs.
 
 Benchmark: SPY
 
+Reference ETFs: SPY, RSP, QQQ
+
 ## Quick Start
 
 ```sh
@@ -112,6 +114,46 @@ Environment overrides supported by `scripts/run_daily.sh`:
 - `SECTORS_PUBLISH_REPO_URL`: optional GitHub URL fallback
 - `SECTORS_PUBLISH_BRANCH`: defaults to `master`
 
+## Weekly Cotpy Collection
+
+The weekly runner generates the cotpy commodity chart set, writes one
+interactive HTML page per key commodity, and publishes the refreshed
+`reports/cotpy` tree to the `csfox` GitHub repo:
+
+```sh
+./scripts/run_weekly.sh
+```
+
+Install the Friday after-hours LaunchAgent:
+
+```sh
+./scripts/install_weekly_launchagent.sh
+```
+
+The weekly job runs Fridays at 5:45 PM local time. Each run writes:
+
+- `reports/cotpy/index.html`
+- `reports/cotpy/charts/<symbol>_interactive.html`
+- `logs/cotpy-weekly.out`
+- `logs/cotpy-weekly.err`
+
+Environment overrides supported by `scripts/run_weekly.sh`:
+
+- `COTPY_PROVIDER`: defaults to `yfinance`
+- `COTPY_PERIOD`: defaults to `2y`
+- `COTPY_LOOKBACK`: defaults to `104` weekly bars
+- `COTPY_PYTHON`: defaults to `/usr/local/bin/python3`
+- `COTPY_PUBLISH_REPORTS`: defaults to `1`; set to `0` to skip publishing
+- `SECTORS_PUBLISH_REPO`: defaults to `kryztoph/csfox`
+- `SECTORS_PUBLISH_REPO_URL`: optional GitHub URL fallback
+- `SECTORS_PUBLISH_BRANCH`: defaults to `master`
+
+Uninstall:
+
+```sh
+./scripts/uninstall_weekly_launchagent.sh
+```
+
 ## Rotation Model
 
 The ranking score is intentionally simple and inspectable:
@@ -119,7 +161,7 @@ The ranking score is intentionally simple and inspectable:
 - 5-day relative return rank
 - 21-day relative return rank
 - 63-day relative return rank
-- Price trend versus 20-day and 50-day moving averages
+- Price trend versus 10-day and 50-day moving averages, with a 150-day reference average
 - 21-day realized volatility as a small penalty
 
 Signals:
@@ -165,8 +207,8 @@ python3 -m sectors charts
 
 Open `reports/sector_charts.html` in a browser. The index links to one chart per
 sector under `reports/charts/`. Each chart includes price candles, volume,
-20-day volume moving average, 20-day and 50-day price moving averages, relative
-strength versus SPY, and linear trendlines for price and relative strength.
+20-day volume moving average, 10-day, 50-day, and 150-day price moving averages,
+relative strength versus SPY, and linear trendlines for price and relative strength.
 
 ## Publishing Reports
 
@@ -184,7 +226,13 @@ This copies:
 - `reports/charts/*.html` to `reports/sectors/charts/`
 - the newest `reports/*-brief.html` to `reports/sectors/latest-brief.html`
 - the newest `reports/*-brief.md` to `reports/sectors/latest-brief.md`
+- `reports/cotpy/index.html` to `reports/cotpy/index.html`
+- `reports/cotpy/charts/*_interactive.html` to `reports/cotpy/charts/`
 - `~/Desktop/logo.png` to `assets/logo.png`
+
+The publisher uses `gh api` to create Git blobs, a tree, and one commit touching
+whichever report trees were regenerated, then advances `master`. It does not
+clone or modify the local `csfox` checkout.
 
 The daily runner publishes to the reports repo by default after charts are
 regenerated.
@@ -206,19 +254,15 @@ The public tracker URL remains:
 https://csfox.com/reports/sectors/sector_rotation_tracker.html
 ```
 
-## Weekly Backfill
+## Weekly Cotpy Charts
 
-Backfill the previous 8 complete weekly closes:
+Generate the weekly commodity chart set locally:
 
 ```sh
-python3 -m sectors backfill-weekly --weeks 8 --provider yfinance --period 1y
+python3 -m sectors cotpy --no-publish
 ```
 
-This writes files named like:
-
-```text
-state/snapshots/backfill-weekly-YYYY-MM-DD.json
-```
-
-Existing weekly backfill files are skipped unless `--overwrite` is provided.
-The tracker is refreshed automatically.
+Open `reports/cotpy/index.html` in a browser. The index links to one
+interactive page per key commodity under `reports/cotpy/charts/`. Each chart
+shows weekly candlesticks, volume, 10-week and 26-week moving averages, and a
+small stat panel.

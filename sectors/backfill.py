@@ -4,7 +4,7 @@ from datetime import date, timedelta
 from pathlib import Path
 
 from .analytics import build_snapshot
-from .config import load_universe, write_json
+from .config import load_references, load_universe, write_json
 from .market_data import get_market_data_provider
 from .model import PriceBar
 from .tracker import write_tracker
@@ -22,7 +22,8 @@ def backfill_weekly_snapshots(
         raise ValueError("weeks must be greater than zero")
 
     benchmark, sectors = load_universe(root)
-    symbols = [benchmark.symbol] + [sector.symbol for sector in sectors]
+    references = load_references(root)
+    symbols = list(dict.fromkeys(reference.symbol for reference in references + sectors))
     provider = get_market_data_provider(provider_name)
     history = provider.fetch_history(symbols, period=period)
     close_dates = _latest_complete_weekly_closes(history, weeks)
@@ -38,6 +39,7 @@ def backfill_weekly_snapshots(
             provider=f"{provider.name}-weekly-backfill",
             created_at=created_at,
             as_of=close_date.isoformat(),
+            references=references,
         )
         path = root / "state" / "snapshots" / f"{created_at}.json"
         if path.exists() and not overwrite:

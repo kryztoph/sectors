@@ -15,6 +15,7 @@ def build_snapshot(
     sectors: list[Instrument],
     history: dict[str, list[PriceBar]],
     provider: str,
+    references: list[Instrument] | None = None,
     created_at: str | None = None,
     as_of: str | None = None,
 ) -> dict[str, object]:
@@ -29,6 +30,10 @@ def build_snapshot(
         "as_of": snapshot_as_of,
         "provider": provider,
         "benchmark": {"symbol": benchmark.symbol, "name": benchmark.name},
+        "references": [
+            {"symbol": reference.symbol, "name": reference.name}
+            for reference in (references or [])
+        ],
         "sectors": [{"symbol": sector.symbol, "name": sector.name} for sector in sectors],
         "metrics": [_metric_to_dict(metric) for metric in metrics],
         "market": serialize_history(history),
@@ -51,10 +56,11 @@ def calculate_sector_metrics(
             label: _subtract(returns[label], benchmark_returns[label])
             for label in WINDOWS
         }
-        ma20 = _moving_average(bars, 20)
+        ma10 = _moving_average(bars, 10)
         ma50 = _moving_average(bars, 50)
+        ma150 = _moving_average(bars, 150)
         close = bars[-1].close
-        trend_score = _trend_score(close, ma20, ma50)
+        trend_score = _trend_score(close, ma10, ma50)
         trend = _trend_label(trend_score)
         vol = _realized_volatility(bars, 21)
         interim.append(
@@ -64,7 +70,7 @@ def calculate_sector_metrics(
                 "close": close,
                 "returns": returns,
                 "relative_returns": relative,
-                "moving_averages": {"20d": ma20, "50d": ma50},
+                "moving_averages": {"10d": ma10, "50d": ma50, "150d": ma150},
                 "trend": trend,
                 "trend_score": trend_score,
                 "volatility_21d": vol,
@@ -164,13 +170,13 @@ def _realized_volatility(bars: list[PriceBar], window: int) -> float | None:
     return stdev(daily_returns) * math.sqrt(252)
 
 
-def _trend_score(close: float, ma20: float | None, ma50: float | None) -> float:
+def _trend_score(close: float, ma10: float | None, ma50: float | None) -> float:
     score = 0.0
-    if ma20 and close > ma20:
+    if ma10 and close > ma10:
         score += 0.5
     if ma50 and close > ma50:
         score += 0.5
-    if ma20 and ma50 and ma20 > ma50:
+    if ma10 and ma50 and ma10 > ma50:
         score += 0.5
     return score
 

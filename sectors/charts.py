@@ -68,6 +68,7 @@ def write_sector_charts(
                 benchmark_symbol=benchmark_symbol,
                 bars=bars[-lookback:],
                 benchmark=benchmark,
+                history=bars,
                 snapshot=snapshot,
                 metric=metrics.get(symbol, {}),
             ),
@@ -88,10 +89,11 @@ def build_sector_chart_html(
     bars: list[ChartBar],
     benchmark: list[ChartBar],
     snapshot: dict[str, Any],
+    history: list[ChartBar] | None = None,
     metric: dict[str, Any] | None = None,
 ) -> str:
     metric = metric or {}
-    svg = _build_svg(symbol, benchmark_symbol, bars, benchmark)
+    svg = _build_svg(symbol, benchmark_symbol, bars, benchmark, history=history)
     interaction_script = _chart_interaction_script()
     title = f"{symbol} Sector Chart"
     rel = metric.get("relative_returns") if isinstance(metric.get("relative_returns"), dict) else {}
@@ -183,13 +185,21 @@ def _footer_html() -> str:
     return '<footer class="report-footer">Copyright &copy; 2026 csfox.com. All rights reserved.</footer>'
 
 
-def _build_svg(symbol: str, benchmark_symbol: str, bars: list[ChartBar], benchmark: list[ChartBar]) -> str:
+def _build_svg(
+    symbol: str,
+    benchmark_symbol: str,
+    bars: list[ChartBar],
+    benchmark: list[ChartBar],
+    history: list[ChartBar] | None = None,
+) -> str:
     if len(bars) < 2:
         raise ValueError(f"{symbol} needs at least 2 bars for charting")
     benchmark_by_date = {bar.date: bar for bar in benchmark}
     rs = _relative_strength(bars, benchmark_by_date)
-    ma20 = _moving_average([bar.close for bar in bars], 20)
-    ma50 = _moving_average([bar.close for bar in bars], 50)
+    calculation_bars = history or bars
+    ma10 = _tail(_moving_average([bar.close for bar in calculation_bars], 10), len(bars))
+    ma50 = _tail(_moving_average([bar.close for bar in calculation_bars], 50), len(bars))
+    ma150 = _tail(_moving_average([bar.close for bar in calculation_bars], 150), len(bars))
     volume_ma = _moving_average([float(bar.volume or 0) for bar in bars], 20)
 
     width = 1120
@@ -231,7 +241,7 @@ def _build_svg(symbol: str, benchmark_symbol: str, bars: list[ChartBar], benchma
     parts = [
         f'<svg class="sector-chart" viewBox="0 0 {width} {height}" role="img" data-dates="{dates}" data-price-min="{price_min:.10g}" data-price-max="{price_max:.10g}" aria-label="{html.escape(symbol)} interactive candlestick chart with volume moving average, relative strength, and trendlines">',
         '<rect class="svg-bg" x="0" y="0" width="1120" height="760"/>',
-        _panel(left, price_top, plot_width, price_height, f"{symbol} candlestick with 20d and 50d moving averages"),
+        _panel(left, price_top, plot_width, price_height, f"{symbol} candlestick with 10d, 50d, and 150d moving averages"),
         _panel(left, volume_top, plot_width, volume_height, "Volume and 20d volume MA"),
         _panel(left, rs_top, plot_width, rs_height, f"Relative strength versus {benchmark_symbol}"),
         _axis_labels(left, plot_width, price_top, price_height, price_min, price_max),
@@ -250,8 +260,9 @@ def _build_svg(symbol: str, benchmark_symbol: str, bars: list[ChartBar], benchma
             vheight = volume_top + volume_height - y_volume(float(bar.volume))
             parts.append(f'<rect class="volume {klass}" x="{cx - candle_width / 2:.2f}" y="{y_volume(float(bar.volume)):.2f}" width="{candle_width:.2f}" height="{max(1.0, vheight):.2f}"/>')
 
-    parts.append(_polyline(ma20, x, y_price, "ma20"))
+    parts.append(_polyline(ma10, x, y_price, "ma10"))
     parts.append(_polyline(ma50, x, y_price, "ma50"))
+    parts.append(_polyline(ma150, x, y_price, "ma150"))
     parts.append(_polyline(volume_ma, x, y_volume, "volume-ma"))
     parts.append(_polyline(rs, x, y_rs, "rs-line"))
     parts.append(_trendline([bar.close for bar in bars], x, y_price, "price-trend"))
@@ -412,6 +423,10 @@ def _moving_average(values: list[float], window: int) -> list[float | None]:
     return output
 
 
+def _tail(values: list[float | None], length: int) -> list[float | None]:
+    return values[-length:]
+
+
 def _trendline(values: list[float | None], x_fn: Any, y_fn: Any, klass: str) -> str:
     points = [(index, value) for index, value in enumerate(values) if value is not None]
     if len(points) < 2:
@@ -459,8 +474,9 @@ def _axis_labels(left: int, width: int, top: int, height: int, minimum: float, m
 
 def _legend(x: int, y: int) -> str:
     items = [
-        ("ma20", "20d MA"),
+        ("ma10", "10d MA"),
         ("ma50", "50d MA"),
+        ("ma150", "150d MA"),
         ("price-trend", "Trendline"),
         ("rs-line", "Relative strength"),
     ]
@@ -530,8 +546,9 @@ def _css() -> str:
       --panel: #ffffff;
       --up: #1f8f5f;
       --down: #b94a48;
-      --ma20: #2f6fb2;
+      --ma10: #2f6fb2;
       --ma50: #6f4aa8;
+      --ma150: #17805c;
       --rs: #bf7b22;
     }
     * { box-sizing: border-box; }
@@ -652,14 +669,19 @@ def _css() -> str:
     .wick { stroke-width: 1.5; }
     .volume.up { fill: rgba(31, 143, 95, 0.34); }
     .volume.down { fill: rgba(185, 74, 72, 0.34); }
-    .ma20 {
+    .ma10 {
       fill: none;
-      stroke: var(--ma20);
+      stroke: var(--ma10);
       stroke-width: 2;
     }
     .ma50 {
       fill: none;
       stroke: var(--ma50);
+      stroke-width: 2;
+    }
+    .ma150 {
+      fill: none;
+      stroke: var(--ma150);
       stroke-width: 2;
     }
     .volume-ma {

@@ -9,6 +9,11 @@ from .model import Instrument
 
 DEFAULT_UNIVERSE: dict[str, Any] = {
     "benchmark": {"symbol": "SPY", "name": "S&P 500 ETF"},
+    "references": [
+        {"symbol": "SPY", "name": "S&P 500 ETF"},
+        {"symbol": "RSP", "name": "Invesco S&P 500 Equal Weight ETF"},
+        {"symbol": "QQQ", "name": "Invesco QQQ Trust"},
+    ],
     "sectors": [
         {"symbol": "XLC", "name": "Communication Services"},
         {"symbol": "XLY", "name": "Consumer Discretionary"},
@@ -83,6 +88,22 @@ def validate_universe(data: dict[str, Any]) -> list[str]:
                 if symbol in seen:
                     errors.append(f"duplicate sector symbol: {symbol}")
                 seen.add(symbol)
+
+    references = data.get("references")
+    if not isinstance(references, list):
+        errors.append("references must be a list")
+    else:
+        seen: set[str] = set()
+        for index, reference in enumerate(references):
+            if not isinstance(reference, dict):
+                errors.append(f"references[{index}] must be an object")
+                continue
+            errors.extend(_validate_instrument(reference, f"references[{index}]"))
+            symbol = reference.get("symbol")
+            if isinstance(symbol, str):
+                if symbol in seen:
+                    errors.append(f"duplicate reference symbol: {symbol}")
+                seen.add(symbol)
     return errors
 
 
@@ -100,6 +121,17 @@ def load_universe(root: Path) -> tuple[Instrument, list[Instrument]]:
         for item in data["sectors"]
     ]
     return benchmark, sectors
+
+
+def load_references(root: Path) -> list[Instrument]:
+    data = read_json(root / "config" / "universe.json")
+    errors = validate_universe(data)
+    if errors:
+        raise ValueError("; ".join(errors))
+    return [
+        Instrument(symbol=item["symbol"], name=item["name"])
+        for item in data["references"]
+    ]
 
 
 def _validate_instrument(item: dict[str, Any], label: str) -> list[str]:

@@ -3,6 +3,20 @@
     "name": "S&P 500 ETF",
     "symbol": "SPY"
   },
+  "references": [
+    {
+      "name": "S&P 500 ETF",
+      "symbol": "SPY"
+    },
+    {
+      "name": "Invesco S&P 500 Equal Weight ETF",
+      "symbol": "RSP"
+    },
+    {
+      "name": "Invesco QQQ Trust",
+      "symbol": "QQQ"
+    }
+  ],
   "sectors": [
     {
       "name": "Communication Services",
