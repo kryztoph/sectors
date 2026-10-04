@@ -32,7 +32,7 @@ def write_sector_charts(
 ) -> list[Path]:
     snapshot = _load_snapshot(snapshot_path or _latest_snapshot(root))
     benchmark_symbol = str(snapshot.get("benchmark", {}).get("symbol") or "SPY")
-    sectors = [item for item in snapshot.get("sectors", []) if isinstance(item, dict)]
+    sectors = [item for item in snapshot.get("sectors", []) + snapshot.get("assets", []) if isinstance(item, dict)]
     market = snapshot.get("market")
     if not isinstance(market, dict):
         raise ValueError("snapshot has no market history")
@@ -49,7 +49,7 @@ def write_sector_charts(
     written: list[Path] = []
     metrics = {
         str(item.get("symbol")): item
-        for item in snapshot.get("metrics", [])
+        for item in snapshot.get("metrics", []) + snapshot.get("asset_metrics", [])
         if isinstance(item, dict) and item.get("symbol")
     }
     for sector in sectors:
@@ -57,7 +57,7 @@ def write_sector_charts(
         if not symbol:
             continue
         bars = _parse_bars(market.get(symbol, []))
-        if not bars:
+        if len(bars) < 2:
             continue
         path = target_dir / f"{symbol}.html"
         name = str(sector.get("name") or symbol)
@@ -95,7 +95,8 @@ def build_sector_chart_html(
     metric = metric or {}
     svg = _build_svg(symbol, benchmark_symbol, bars, benchmark, history=history)
     interaction_script = _chart_interaction_script()
-    title = f"{symbol} Sector Chart"
+    is_asset = any(item.get("symbol") == symbol for item in snapshot.get("assets", []))
+    title = f"{symbol} {'Market' if is_asset else 'Sector'} Chart"
     rel = metric.get("relative_returns") if isinstance(metric.get("relative_returns"), dict) else {}
     stats = [
         ("Signal", str(metric.get("signal", "N/A"))),
@@ -104,6 +105,13 @@ def build_sector_chart_html(
         ("Rel 21d", _pct(rel.get("21d") if isinstance(rel, dict) else None)),
         ("Trend", str(metric.get("trend", "N/A"))),
     ]
+    if is_asset:
+        stats = [
+            ("As of", str(metric.get("as_of", "N/A"))),
+            ("Close", _number(metric.get("close"))),
+            ("21 sessions", _pct((metric.get("returns") or {}).get("21d"))),
+            ("21 sessions vs SPY", _pct(rel.get("21d"))),
+        ]
     stats_html = "\n".join(
         f"<div><span>{html.escape(label)}</span><strong>{html.escape(value)}</strong></div>"
         for label, value in stats
@@ -125,7 +133,7 @@ def build_sector_chart_html(
         <h1>{html.escape(symbol)} - {html.escape(name)}</h1>
         <p>As of {html.escape(str(snapshot.get("as_of", "unknown")))} from {html.escape(str(snapshot.get("provider", "unknown")))}.</p>
       </div>
-      <section class="stats" aria-label="Sector metrics">
+      <section class="stats" aria-label="Market metrics">
         {stats_html}
       </section>
     </header>
@@ -164,7 +172,7 @@ def build_index_html(snapshot: dict[str, Any], pages: list[dict[str, str]]) -> s
       </div>
     </header>
     <table>
-      <thead><tr><th>Symbol</th><th>Sector</th></tr></thead>
+      <thead><tr><th>Symbol</th><th>Sector / market</th></tr></thead>
       <tbody>{rows}</tbody>
     </table>
     {_footer_html()}

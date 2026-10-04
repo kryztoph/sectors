@@ -266,3 +266,44 @@ Open `reports/cotpy/index.html` in a browser. The index links to one
 interactive page per key commodity under `reports/cotpy/charts/`. Each chart
 shows weekly candlesticks, volume, 10-week and 26-week moving averages, and a
 small stat panel.
+
+## Sector weights and additional markets
+
+Daily snapshots now collect the dated **S&P 500 index sector breakdown** from
+[State Street's official SPY page](https://www.ssga.com/us/en/intermediary/etfs/state-street-spdr-sp-500-etf-trust-spy).
+The tracker and Markdown/HTML briefs show each sector's index weight, the
+allocation date and source. Index weights are distinct from SPY fund allocations.
+The collector validates all eleven sectors and their total; unavailable or
+invalid allocations display N/A. Allocation dates can differ from price dates.
+Historical backfills deliberately show N/A rather than attaching today's weights
+to past snapshots. Old snapshots remain readable.
+
+`config/universe.json` has an optional `assets` list in addition to the eleven
+sectors. The default additional markets are:
+
+| Symbol | Coverage | Close units |
+| --- | --- | --- |
+| CL=F | WTI crude oil continuous futures | USD per barrel |
+| ZN=F | 10-year Treasury note continuous futures price | Points per 100 face value |
+| BTC-USD | Bitcoin spot price | USD |
+
+[CME WTI futures](https://www.cmegroup.com/markets/energy/crude-oil/light-sweet-crude.html)
+and [CME 10-year note futures](https://www.cmegroup.com/markets/interest-rates/us-treasury/10-year-us-treasury-note.html)
+define the futures exposures. Yahoo Finance supplies the continuous futures and
+Bitcoin price series through the existing optional yfinance provider. These are
+market context assets outside the sector rankings. Futures rolls affect price
+returns; ZN=F measures note prices rather than a 10-year yield. The tracker and
+briefs show 21-session returns and excess returns versus SPY using common dates,
+so Bitcoin weekend observations do not shift the comparison window. Candlestick
+charts are generated for assets with history. Failed asset downloads display
+unavailable/N/A and do not block the sector snapshot. Removing an asset from
+configuration stops future collection without altering older snapshots.
+
+To collect and inspect locally without publishing:
+
+```sh
+python3 -m sectors snapshot
+python3 -m sectors brief
+python3 -m sectors tracker --no-publish
+python3 -m sectors charts
+```

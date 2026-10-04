@@ -4,8 +4,8 @@ from datetime import date, timedelta
 from pathlib import Path
 
 from .analytics import build_snapshot
-from .config import load_references, load_universe, write_json
-from .market_data import get_market_data_provider
+from .config import load_assets, load_references, load_universe, write_json
+from .market_data import fetch_optional_history, get_market_data_provider
 from .model import PriceBar
 from .tracker import write_tracker
 
@@ -22,15 +22,27 @@ def backfill_weekly_snapshots(
         raise ValueError("weeks must be greater than zero")
 
     benchmark, sectors = load_universe(root)
+    assets = load_assets(root)
     references = load_references(root)
-    symbols = list(dict.fromkeys(reference.symbol for reference in references + sectors))
+    asset_symbols = {item.symbol for item in assets}
+    symbols = list(dict.fromkeys(reference.symbol for reference in [benchmark] + references + sectors))
     provider = get_market_data_provider(provider_name)
     history = provider.fetch_history(symbols, period=period)
-    close_dates = _latest_complete_weekly_closes(history, weeks)
+    history.update(fetch_optional_history(provider, [item.symbol for item in assets], period))
+    # Optional assets must not shorten the core sector backfill calendar.
+    core_history = {item.symbol: history.get(item.symbol, []) for item in [benchmark, *sectors]}
+    close_dates = _latest_complete_weekly_closes(core_history, weeks)
     written: list[Path] = []
 
     for close_date in close_dates:
-        truncated = _truncate_history(history, close_date.isoformat())
+        truncated = _truncate_history(
+            {symbol: bars for symbol, bars in history.items() if symbol not in asset_symbols},
+            close_date.isoformat(),
+        )
+        truncated.update({
+            item.symbol: [bar for bar in history.get(item.symbol, []) if bar.date <= close_date.isoformat()]
+            for item in assets
+        })
         created_at = f"backfill-weekly-{close_date.isoformat()}"
         snapshot = build_snapshot(
             benchmark,
@@ -40,6 +52,9 @@ def backfill_weekly_snapshots(
             created_at=created_at,
             as_of=close_date.isoformat(),
             references=references,
+            assets=assets,
+            # Current allocations cannot be assigned to historical dates.
+            sector_weights={"status": "unavailable", "reason": "historical allocations not collected"},
         )
         path = root / "state" / "snapshots" / f"{created_at}.json"
         if path.exists() and not overwrite:

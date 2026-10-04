@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import html
+from .context import context_html, pct
 from pathlib import Path
 from typing import Any
 
@@ -41,6 +42,14 @@ def build_brief(snapshot: dict[str, Any]) -> str:
                 trend=row.get("trend", ""),
             )
         )
+    allocation = snapshot.get("sector_weights") or {}
+    lines.extend(["", "## S&P 500 sector weights", "", f"Allocation as of: {allocation.get('as_of', 'unavailable')}", f"Source: {allocation.get('source', 'unavailable')}", "", "| Sector | Index weight |", "| --- | ---: |"])
+    for item in snapshot.get("sectors", []):
+        lines.append(f"| {item['name']} | {pct((allocation.get('weights') or {}).get(item['symbol']))} |")
+    lines.extend(["", "## Oil, 10-year notes and Bitcoin", "", "| Asset | Symbol | As of | 21 sessions | vs SPY |", "| --- | --- | --- | ---: | ---: |"])
+    for item in snapshot.get("asset_metrics", []):
+        lines.append(f"| {item['name']} | {item['symbol']} | {item.get('as_of', 'unavailable')} | {pct((item.get('returns') or {}).get('21d'))} | {pct((item.get('relative_returns') or {}).get('21d'))} |")
+    lines.extend(["", "Assets use common SPY trading dates and are outside the sector ranks. Continuous futures rolls affect returns; ZN=F is a note price, not a yield."])
     lines.extend(["", "## Notes", ""])
     lines.append("- Relative returns are sector ETF returns minus SPY returns over the same window.")
     lines.append("- Scores are cross-sectional ranks; they are useful for rotation monitoring, not trade execution.")
@@ -102,6 +111,7 @@ def build_brief_html(snapshot: dict[str, Any]) -> str:
         </table>
       </div>
     </section>
+    {context_html(snapshot)}
     <section class="notes" aria-label="Notes">
       <h2>Notes</h2>
       <ul>

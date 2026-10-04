@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import html
+from .context import context_html
 import json
 from pathlib import Path
 from typing import Any
@@ -78,6 +79,7 @@ def build_rotation_series(snapshots: list[dict[str, Any]]) -> dict[str, Any]:
                 "createdAt": snapshot.get("created_at", "unknown"),
                 "asOf": snapshot.get("as_of", "unknown"),
                 "provider": snapshot.get("provider", "unknown"),
+                "contextHtml": context_html(snapshot),
                 "points": sorted(points, key=lambda item: str(item["symbol"])),
             }
         )
@@ -99,7 +101,7 @@ def build_rotation_series(snapshots: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 def build_tracker_html(series: dict[str, Any], trail_length: int = 12) -> str:
-    payload = json.dumps(series, separators=(",", ":"))
+    payload = json.dumps(series, separators=(",", ":")).replace("<", "\\u003c")
     title = "Sector Rotation Tracker"
     frame_count = int(series.get("frameCount") or 0)
     return f"""<!doctype html>
@@ -402,6 +404,7 @@ def build_tracker_html(series: dict[str, Any], trail_length: int = 12) -> str:
         <p class="note">X-axis is relative strength score. Y-axis is change in score versus the prior snapshot. Sector trails show the recent path through time.</p>
       </aside>
     </section>
+    <div id="marketContext"></div>
     <footer class="report-footer">Copyright &copy; 2026 csfox.com. All rights reserved.</footer>
   </main>
   <script>
@@ -555,6 +558,7 @@ def build_tracker_html(series: dict[str, Any], trail_length: int = 12) -> str:
 
     function updateTable(index) {{
       const frame = SERIES.frames[index];
+      document.getElementById("marketContext").innerHTML = frame.contextHtml || "";
       frameLabel.textContent = `${{frame.asOf}} (${{index + 1}} / ${{SERIES.frames.length}})`;
       asOf.textContent = `As of: ${{frame.asOf}} | Created: ${{frame.createdAt}}`;
       rows.innerHTML = "";

@@ -44,6 +44,17 @@ class YFinanceMarketDataProvider(MarketDataProvider):
         return data
 
 
+def fetch_optional_history(provider: MarketDataProvider, symbols: list[str], period: str) -> dict[str, list[PriceBar]]:
+    result = {}
+    for symbol in symbols:
+        try:
+            result[symbol] = provider.fetch_history([symbol], period=period).get(symbol, [])
+        except Exception:
+            # An unavailable context asset must not block the sector snapshot.
+            result[symbol] = []
+    return result
+
+
 def provider_names() -> list[str]:
     return ["yfinance"]
 
