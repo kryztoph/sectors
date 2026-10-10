@@ -62,5 +62,19 @@
       "name": "Utilities",
       "symbol": "XLU"
     }
+  ],
+  "assets": [
+    {
+      "symbol": "CL=F",
+      "name": "WTI crude oil (continuous futures)"
+    },
+    {
+      "symbol": "ZN=F",
+      "name": "10-year Treasury note (continuous futures price)"
+    },
+    {
+      "symbol": "BTC-USD",
+      "name": "Bitcoin (USD spot)"
+    }
   ]
 }

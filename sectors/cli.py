@@ -10,8 +10,9 @@ from .analytics import build_snapshot
 from .backfill import backfill_weekly_snapshots
 from .charts import write_sector_charts
 from .cotpy import write_cotpy_charts
-from .config import init_project, load_references, load_universe, read_json, validate_universe, write_json
-from .market_data import get_market_data_provider, provider_names
+from .weights import fetch_sector_weights
+from .config import load_assets, init_project, load_references, load_universe, read_json, validate_universe, write_json
+from .market_data import fetch_optional_history, get_market_data_provider, provider_names
 from .model import utc_timestamp
 from .report import write_brief, write_brief_html
 from .tracker import write_tracker
@@ -43,11 +44,16 @@ def cmd_validate(args: argparse.Namespace) -> int:
 
 def cmd_snapshot(args: argparse.Namespace) -> int:
     benchmark, sectors = load_universe(ROOT)
+    assets = load_assets(ROOT)
     references = load_references(ROOT)
-    symbols = list(dict.fromkeys(reference.symbol for reference in references + sectors))
+    symbols = list(dict.fromkeys(reference.symbol for reference in [benchmark] + references + sectors))
     provider = get_market_data_provider(args.provider)
     history = provider.fetch_history(symbols, period=args.period)
-    snapshot = build_snapshot(benchmark, sectors, history, provider=provider.name, references=references)
+    history.update(fetch_optional_history(provider, [item.symbol for item in assets], args.period))
+    snapshot = build_snapshot(
+        benchmark, sectors, history, provider=provider.name,
+        references=references, assets=assets, sector_weights=fetch_sector_weights(),
+    )
     output = Path(args.output) if args.output else ROOT / "state" / "snapshots" / f"{snapshot['created_at']}.json"
     write_json(output, snapshot)
     if args.promote_latest:

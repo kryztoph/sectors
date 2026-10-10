@@ -18,13 +18,21 @@ def build_snapshot(
     references: list[Instrument] | None = None,
     created_at: str | None = None,
     as_of: str | None = None,
+    assets: list[Instrument] | None = None,
+    sector_weights: dict[str, object] | None = None,
 ) -> dict[str, object]:
     benchmark_bars = history.get(benchmark.symbol, [])
     if len(benchmark_bars) < 64:
         raise ValueError(f"{benchmark.symbol} needs at least 64 price bars")
 
     metrics = calculate_sector_metrics(benchmark, sectors, history)
-    snapshot_as_of = as_of or (max(bar.date for bars in history.values() for bar in bars) if history else "unknown")
+    snapshot_as_of = as_of or benchmark_bars[-1].date
+    asset_symbols = {item.symbol for item in (assets or [])}
+    snapshot_history = {
+        symbol: [bar for bar in bars if bar.date <= snapshot_as_of]
+        if symbol in asset_symbols else bars
+        for symbol, bars in history.items()
+    }
     return {
         "created_at": created_at or utc_timestamp(),
         "as_of": snapshot_as_of,
@@ -36,8 +44,37 @@ def build_snapshot(
         ],
         "sectors": [{"symbol": sector.symbol, "name": sector.name} for sector in sectors],
         "metrics": [_metric_to_dict(metric) for metric in metrics],
-        "market": serialize_history(history),
+        "assets": [{"symbol": item.symbol, "name": item.name} for item in (assets or [])],
+        "asset_metrics": calculate_asset_metrics(benchmark, assets or [], history, snapshot_as_of),
+        "sector_weights": sector_weights or {"status": "unavailable"},
+        "market": serialize_history(snapshot_history),
     }
+
+
+def calculate_asset_metrics(
+    benchmark: Instrument,
+    assets: list[Instrument],
+    history: dict[str, list[PriceBar]],
+    as_of: str,
+) -> list[dict[str, object]]:
+    result: list[dict[str, object]] = []
+    benchmark_by_date = {bar.date: bar for bar in history[benchmark.symbol] if bar.date <= as_of}
+    for asset in assets:
+        by_date = {bar.date: bar for bar in history.get(asset.symbol, []) if bar.date <= as_of}
+        dates = sorted(set(by_date) & set(benchmark_by_date))
+        row: dict[str, object] = {"symbol": asset.symbol, "name": asset.name, "status": "unavailable"}
+        if dates:
+            bars = [by_date[day] for day in dates]
+            spy = [benchmark_by_date[day] for day in dates]
+            returns = _window_returns(bars)
+            benchmark_returns = _window_returns(spy)
+            relative = {label: _subtract(returns[label], benchmark_returns[label]) for label in WINDOWS}
+            row.update(
+                status="available", as_of=dates[-1], close=bars[-1].close,
+                returns=_rounded_dict(returns), relative_returns=_rounded_dict(relative),
+            )
+        result.append(row)
+    return result
 
 
 def calculate_sector_metrics(

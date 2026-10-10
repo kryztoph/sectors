@@ -14,6 +14,11 @@ DEFAULT_UNIVERSE: dict[str, Any] = {
         {"symbol": "RSP", "name": "Invesco S&P 500 Equal Weight ETF"},
         {"symbol": "QQQ", "name": "Invesco QQQ Trust"},
     ],
+    "assets": [
+        {"symbol": "CL=F", "name": "WTI crude oil (continuous futures)"},
+        {"symbol": "ZN=F", "name": "10-year Treasury note (continuous futures price)"},
+        {"symbol": "BTC-USD", "name": "Bitcoin (USD spot)"},
+    ],
     "sectors": [
         {"symbol": "XLC", "name": "Communication Services"},
         {"symbol": "XLY", "name": "Consumer Discretionary"},
@@ -104,6 +109,30 @@ def validate_universe(data: dict[str, Any]) -> list[str]:
                 if symbol in seen:
                     errors.append(f"duplicate reference symbol: {symbol}")
                 seen.add(symbol)
+    assets = data.get("assets", [])
+    if not isinstance(assets, list):
+        errors.append("assets must be a list")
+    else:
+        seen_assets: set[str] = set()
+        reserved = {
+            item.get("symbol")
+            for group in (sectors, references)
+            if isinstance(group, list)
+            for item in group
+            if isinstance(item, dict) and isinstance(item.get("symbol"), str)
+        }
+        if isinstance(benchmark, dict) and isinstance(benchmark.get("symbol"), str):
+            reserved.add(benchmark["symbol"])
+        for index, asset in enumerate(assets):
+            if not isinstance(asset, dict):
+                errors.append(f"assets[{index}] must be an object")
+                continue
+            errors.extend(_validate_instrument(asset, f"assets[{index}]"))
+            symbol = asset.get("symbol")
+            if isinstance(symbol, str) and (symbol in seen_assets or symbol in reserved):
+                errors.append(f"duplicate or reserved asset symbol: {symbol}")
+            if isinstance(symbol, str):
+                seen_assets.add(symbol)
     return errors
 
 
@@ -121,6 +150,14 @@ def load_universe(root: Path) -> tuple[Instrument, list[Instrument]]:
         for item in data["sectors"]
     ]
     return benchmark, sectors
+
+
+def load_assets(root: Path) -> list[Instrument]:
+    data = read_json(root / "config" / "universe.json")
+    errors = validate_universe(data)
+    if errors:
+        raise ValueError("; ".join(errors))
+    return [Instrument(symbol=item["symbol"], name=item["name"]) for item in data.get("assets", [])]
 
 
 def load_references(root: Path) -> list[Instrument]:
