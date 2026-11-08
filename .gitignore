@@ -13,3 +13,5 @@
 __pycache__/
 *.pyc
 .DS_Store
+
+/state/candidates*.sqlite3*

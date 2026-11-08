@@ -55,19 +55,23 @@ def write_cotpy_charts(
     if lookback <= 0:
         raise ValueError("lookback must be greater than zero")
 
+    # Validate the entire set before replacing any previously published chart.
+    weekly_history = {item.ticker: _weekly_bars(history.get(item.ticker, [])) for item in COTPY_UNIVERSE}
+    missing_symbols = [item.symbol for item in COTPY_UNIVERSE if len(weekly_history[item.ticker]) < 8]
+    if len(missing_symbols) == len(COTPY_UNIVERSE):
+        raise ValueError("no cotpy charts could be generated")
+    if missing_symbols:
+        raise ValueError("insufficient history for cotpy symbols: " + ", ".join(sorted(missing_symbols)))
+
     target_index = output or root / DEFAULT_INDEX
     target_dir = chart_dir or root / DEFAULT_CHART_DIR
     target_dir.mkdir(parents=True, exist_ok=True)
 
     pages: list[dict[str, Any]] = []
     written: list[Path] = []
-    missing: list[str] = []
 
     for item in COTPY_UNIVERSE:
-        bars = _weekly_bars(history.get(item.ticker, []))
-        if len(bars) < 8:
-            missing.append(item.symbol)
-            continue
+        bars = weekly_history[item.ticker]
         window = bars[-lookback:]
         latest = window[-1]
         page_path = target_dir / f"{item.symbol}_interactive.html"
@@ -90,11 +94,6 @@ def write_cotpy_charts(
             }
         )
         written.append(page_path)
-
-    if not pages:
-        raise ValueError("no cotpy charts could be generated")
-    if missing:
-        raise ValueError("insufficient history for cotpy symbols: " + ", ".join(sorted(missing)))
 
     target_index.parent.mkdir(parents=True, exist_ok=True)
     target_index.write_text(build_cotpy_index_html(pages), encoding="utf-8")

@@ -1,7 +1,8 @@
 #!/bin/sh
 set -eu
 
-PROJECT_DIR="${SECTORS_PROJECT_DIR:-/Users/fox/Private/Projects/sectors}"
+SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+PROJECT_DIR="${SECTORS_PROJECT_DIR:-$(dirname -- "$SCRIPT_DIR")}"
 PYTHON_BIN="${SECTORS_PYTHON:-python3}"
 
 cd "$PROJECT_DIR"
