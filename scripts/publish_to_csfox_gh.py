@@ -4,22 +4,31 @@ from __future__ import annotations
 import base64
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
 from urllib.parse import urlparse
 
 
-PROJECT_DIR = Path(os.environ.get("SECTORS_PROJECT_DIR", "/Users/fox/Private/Projects/sectors"))
-DEFAULT_REPO = "kryztoph/csfox"
+PROJECT_DIR = Path(os.environ.get("SECTORS_PROJECT_DIR", Path(__file__).resolve().parents[1]))
+DEFAULT_REPO = "kryztoph/csfox-reports"
 BRANCH = os.environ.get("SECTORS_PUBLISH_BRANCH", os.environ.get("SECTORS_REPORTS_BRANCH", "master"))
 LOGO_SOURCE = Path(os.environ.get("SECTORS_LOGO_SOURCE", "/Users/fox/Desktop/logo.png"))
 
 
 def main() -> int:
-    os.chdir(PROJECT_DIR)
     repo = _repo_name()
+    _validate_target(repo, BRANCH)
+    os.chdir(PROJECT_DIR)
     files = _publish_files()
+
+    # Resolve canonical identity before any Git write (including renamed repos).
+    metadata = _gh_json(f"repos/{repo}")
+    canonical = metadata["full_name"]
+    _validate_target(canonical, BRANCH)
+    if canonical.casefold() != repo.casefold():
+        raise ValueError("repository redirect rejected; configure its canonical name explicitly")
 
     base_commit = _gh_json(f"repos/{repo}/git/ref/heads/{BRANCH}")["object"]["sha"]
     base_tree = _gh_json(f"repos/{repo}/git/commits/{base_commit}")["tree"]["sha"]
@@ -75,22 +84,43 @@ def main() -> int:
 
 
 def _repo_name() -> str:
+    for key in ("SECTORS_PUBLISH_REPO", "SECTORS_PUBLISH_REPO_URL", "SECTORS_REPORTS_REPO_URL"):
+        if os.environ.get(key):
+            _validate_target(_parse_repo(os.environ[key]), BRANCH)
     explicit = os.environ.get("SECTORS_PUBLISH_REPO")
     if explicit:
-        return explicit
+        return _parse_repo(explicit)
     url = os.environ.get("SECTORS_PUBLISH_REPO_URL") or os.environ.get("SECTORS_REPORTS_REPO_URL")
     if not url:
         return DEFAULT_REPO
-    parsed = urlparse(url)
-    if parsed.netloc:
+    return _parse_repo(url)
+
+
+def _parse_repo(value: str) -> str:
+    value = value.strip()
+    if value.startswith("git@github.com:"):
+        path = value[len("git@github.com:"):]
+    elif "://" in value:
+        parsed = urlparse(value)
+        if parsed.scheme != "https" or parsed.netloc.lower() != "github.com" or parsed.query or parsed.fragment:
+            raise ValueError("only canonical GitHub HTTPS repository URLs are supported")
         path = parsed.path.strip("/")
     else:
-        path = url.strip("/")
+        path = value.rstrip("/")
     if path.endswith(".git"):
         path = path[:-4]
-    if path.count("/") != 1:
-        raise ValueError(f"cannot parse GitHub repository from {url!r}")
+    if not re.fullmatch(r"[A-Za-z0-9-]+/[A-Za-z0-9_.-]+", path) or path.split("/")[1] in {".", ".."}:
+        raise ValueError(f"cannot parse GitHub repository from {value!r}")
     return path
+
+
+def _validate_target(repo: str, branch: str) -> None:
+    if _parse_repo(repo).casefold() == "kryztoph/csfox":
+        raise ValueError("publication to frontend kryztoph/csfox is forbidden; use kryztoph/csfox-reports")
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._/-]*", branch) or ".." in branch or "//" in branch:
+        raise ValueError("invalid publication branch")
+    if repo.casefold() == DEFAULT_REPO and branch != "master":
+        raise ValueError("csfox-reports publication requires verified target branch master")
 
 
 def _publish_files() -> list[tuple[Path, str]]:
@@ -100,10 +130,19 @@ def _publish_files() -> list[tuple[Path, str]]:
 
     files.extend(_sector_files())
     files.extend(_cotpy_files())
+    files.extend(_analysis_files())
 
     if not files:
         raise FileNotFoundError("no report files found to publish")
     return files
+
+
+def _analysis_files() -> list[tuple[Path, str]]:
+    # Analysis is opt-in; the daily and weekly collectors do not generate it.
+    paths = [Path("reports/candidates") / name for name in ("latest.json", "latest.md", "latest.html")]
+    if not all(path.is_file() for path in paths):
+        return []
+    return [(path, f"reports/sectors/candidates/{path.name}") for path in paths]
 
 
 def _sector_files() -> list[tuple[Path, str]]:

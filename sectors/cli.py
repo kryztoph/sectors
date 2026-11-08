@@ -5,6 +5,9 @@ import json
 import os
 from pathlib import Path
 import subprocess
+from datetime import UTC, datetime
+
+from .candidates import review_packet, timestamp, update_outcomes
 
 from .analytics import build_snapshot
 from .backfill import backfill_weekly_snapshots
@@ -19,6 +22,19 @@ from .tracker import write_tracker
 
 
 ROOT = Path.cwd()
+
+
+def cmd_candidates(args: argparse.Namespace) -> int:
+    try:
+        now = timestamp(args.as_of) if args.as_of else datetime.now(UTC)
+        packet = read_json(Path(args.input))
+        operation = update_outcomes if args.command == "candidate-outcomes" else review_packet
+        result = operation(ROOT, packet, now, replay=args.as_of is not None)
+        print(json.dumps(result, indent=2, sort_keys=True))
+        return 0
+    except (ValueError, TypeError, KeyError, OSError) as exc:
+        print(f"ERROR: {exc}")
+        return 1
 
 
 def cmd_init(args: argparse.Namespace) -> int:
@@ -167,6 +183,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="sectors")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
+    for command in ("candidates", "candidate-outcomes"):
+        candidate_parser = subparsers.add_parser(command, help="Local, opt-in hypothetical candidate review; never publishes")
+        candidate_parser.add_argument("--input", required=True, help="Sourced evidence JSON; see docs/candidate-analysis.md")
+        candidate_parser.add_argument("--as-of", help="Timezone-aware evaluation time for explicit historical replay")
+        candidate_parser.set_defaults(func=cmd_candidates)
+
     init_parser = subparsers.add_parser("init")
     init_parser.set_defaults(func=cmd_init)
 
@@ -200,7 +222,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--publish",
         action=argparse.BooleanOptionalAction,
         default=True,
-        help="Publish the default tracker directly to the csfox GitHub repo after writing it",
+        help="Publish the default tracker to csfox-reports after writing it",
     )
     tracker_parser.set_defaults(func=cmd_tracker)
 
@@ -221,7 +243,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--publish",
         action=argparse.BooleanOptionalAction,
         default=True,
-        help="Publish the default cotpy report directly to the csfox GitHub repo after writing it",
+        help="Publish the default cotpy report to csfox-reports after writing it",
     )
     cotpy_parser.set_defaults(func=cmd_cotpy)
 
@@ -235,7 +257,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--publish",
         action=argparse.BooleanOptionalAction,
         default=True,
-        help="Publish directly to the csfox GitHub repo after refreshing the tracker",
+        help="Publish to csfox-reports after refreshing the tracker",
     )
     backfill_parser.set_defaults(func=cmd_backfill_weekly)
     return parser
@@ -264,5 +286,6 @@ def _publish_to_reports_repo() -> int:
     if not script.exists():
         print(f"ERROR: missing publish script: {script}")
         return 1
-    completed = subprocess.run([str(script)], cwd=ROOT, check=False)
+    env = dict(os.environ, SECTORS_PROJECT_DIR=str(ROOT))
+    completed = subprocess.run([str(script)], cwd=ROOT, env=env, check=False)
     return completed.returncode

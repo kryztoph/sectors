@@ -110,7 +110,7 @@ Environment overrides supported by `scripts/run_daily.sh`:
 - `SECTORS_PYTHON`: defaults to `/usr/local/bin/python3`
 - `SECTORS_PUBLISH_REPORTS`: defaults to `1`; set to `0` to skip publishing
   generated sector reports to GitHub
-- `SECTORS_PUBLISH_REPO`: defaults to `kryztoph/csfox`
+- `SECTORS_PUBLISH_REPO`: defaults to `kryztoph/csfox-reports`
 - `SECTORS_PUBLISH_REPO_URL`: optional GitHub URL fallback
 - `SECTORS_PUBLISH_BRANCH`: defaults to `master`
 
@@ -118,7 +118,7 @@ Environment overrides supported by `scripts/run_daily.sh`:
 
 The weekly runner generates the cotpy commodity chart set, writes one
 interactive HTML page per key commodity, and publishes the refreshed
-`reports/cotpy` tree to the `csfox` GitHub repo:
+`reports/cotpy` tree to the `csfox-reports` GitHub repo:
 
 ```sh
 ./scripts/run_weekly.sh
@@ -144,7 +144,7 @@ Environment overrides supported by `scripts/run_weekly.sh`:
 - `COTPY_LOOKBACK`: defaults to `104` weekly bars
 - `COTPY_PYTHON`: defaults to `/usr/local/bin/python3`
 - `COTPY_PUBLISH_REPORTS`: defaults to `1`; set to `0` to skip publishing
-- `SECTORS_PUBLISH_REPO`: defaults to `kryztoph/csfox`
+- `SECTORS_PUBLISH_REPO`: defaults to `kryztoph/csfox-reports`
 - `SECTORS_PUBLISH_REPO_URL`: optional GitHub URL fallback
 - `SECTORS_PUBLISH_BRANCH`: defaults to `master`
 
@@ -182,7 +182,7 @@ python3 -m sectors tracker
 ```
 
 By default, the tracker command also publishes the refreshed default tracker
-directly to the `csfox` GitHub repo. To generate only the local file:
+directly to the `csfox-reports` GitHub repo. To generate only the local file:
 
 ```sh
 python3 -m sectors tracker --no-publish
@@ -212,7 +212,7 @@ relative strength versus SPY, and linear trendlines for price and relative stren
 
 ## Publishing Reports
 
-Publish regenerated static sector outputs directly to the `csfox` GitHub repo
+Publish regenerated static sector outputs directly to the `csfox-reports` GitHub repo
 without touching the local `csfox` working tree:
 
 ```sh
@@ -229,10 +229,12 @@ This copies:
 - `reports/cotpy/index.html` to `reports/cotpy/index.html`
 - `reports/cotpy/charts/*_interactive.html` to `reports/cotpy/charts/`
 - `~/Desktop/logo.png` to `assets/logo.png`
+- opt-in `reports/candidates/latest.{json,md,html}` to `reports/sectors/candidates/`
+  (historical replay reports are excluded)
 
 The publisher uses `gh api` to create Git blobs, a tree, and one commit touching
 whichever report trees were regenerated, then advances `master`. It does not
-clone or modify the local `csfox` checkout.
+clone or modify the local frontend checkout.
 
 The daily runner publishes to the reports repo by default after charts are
 regenerated.
@@ -244,15 +246,14 @@ To run the daily flow without publishing:
 SECTORS_PUBLISH_REPORTS=0 ./scripts/run_daily.sh
 ```
 
-The default repository is `kryztoph/csfox`. The publisher uses `gh api` to
-create Git blobs, a tree, and one commit touching only `assets/logo.png` and
-`reports/sectors`, then advances `master`. It does not clone or modify the local
-`csfox` checkout.
-The public tracker URL remains:
-
-```text
-https://csfox.com/reports/sectors/sector_rotation_tracker.html
-```
+The default repository is `kryztoph/csfox-reports` on `master`. The publisher
+rejects frontend `kryztoph/csfox` targets (including legacy URL settings and
+canonical repository redirects) before creating blobs or commits. It checks that
+the target branch exists before writes, preserves unrelated files using the base
+tree, skips unchanged trees, and never forces a branch update. Explicit alternate
+report repositories remain supported; the default reports repo requires `master`.
+The frontend serves navigation separately. Report hosting and routing are configured
+in the reports repository; this publisher does not change frontend routing.
 
 ## Weekly Cotpy Charts
 
@@ -307,3 +308,28 @@ python3 -m sectors brief
 python3 -m sectors tracker --no-publish
 python3 -m sectors charts
 ```
+
+
+## Candidate review (opt-in)
+
+```sh
+python3 -m sectors candidates --input /path/to/sourced-candidates.json
+python3 -m sectors candidate-outcomes --input /path/to/sourced-outcome-history.json
+```
+
+These local commands add candidate-specific MA20/MA50, Wilder RSI14/ATR14,
+volume/liquidity, confirmed support/resistance, event checks, exact position sizing,
+and a separate hypothetical outcome ledger. Existing sector ranking and 5/21/63-day
+relative strength are preserved. Analysis requires sourced evidence; it does not
+invent missing quotes, levels, event clearance, or broker fills.
+
+See [input contract, gates, replay and review workflow](docs/candidate-analysis.md).
+Reports are written to `reports/candidates/latest.json`, `.md` and `.html`. The
+existing publisher includes this complete trio under `reports/sectors/candidates/`
+when explicitly run. Neither new command publishes or changes production jobs.
+The external ChatGPT monitor's 7:45 PM ET primary run and conditional four-hour
+retries remain managed externally and are not changed by these commands. Its
+$2,000/$60/3%/2R policy is enforced per hypothetical setup here.
+
+Run offline tests with `python3 -m unittest discover -s tests -v`, or install
+`python3 -m pip install -e '.[test]'` and run `python3 -m pytest`.

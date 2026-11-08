@@ -11,6 +11,7 @@ requires-python = ">=3.11"
 
 [project.optional-dependencies]
 live = ["yfinance>=0.2.40"]
+test = ["pytest>=8"]
 
 [project.scripts]
 sectors = "sectors.cli:main"
